@@ -1,0 +1,54 @@
+"""
+تنظیمات مرکزی پروژه.
+همه‌ی مقادیر قابل‌تنظیم (توکن، مسیر دیتابیس، تایمینگ‌های یادآوری و ...) از اینجا خوانده می‌شوند
+تا در آینده بدون دست‌زدن به منطق برنامه، قابل تغییر باشند.
+"""
+from __future__ import annotations
+
+import os
+from dataclasses import dataclass, field
+
+from dotenv import load_dotenv
+
+load_dotenv()
+
+
+def _get_int(name: str, default: int) -> int:
+    val = os.getenv(name)
+    if val is None or val.strip() == "":
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
+
+def _get_admin_ids() -> set[int]:
+    raw = os.getenv("ADMIN_IDS", "")
+    ids: set[int] = set()
+    for part in raw.split(","):
+        part = part.strip()
+        if part.isdigit():
+            ids.add(int(part))
+    return ids
+
+
+@dataclass(frozen=True)
+class Settings:
+    bot_token: str = field(default_factory=lambda: os.getenv("BOT_TOKEN", ""))
+    database_path: str = field(default_factory=lambda: os.getenv("DATABASE_PATH", "laahiq.db"))
+    admin_ids: set[int] = field(default_factory=_get_admin_ids)
+
+    # یادآوری غیرفعالی (بخش ۱۷ سند)
+    reminder_inactivity_hours: int = field(
+        default_factory=lambda: _get_int("REMINDER_INACTIVITY_HOURS", 12)
+    )
+    reminder_min_gap_hours: int = field(
+        default_factory=lambda: _get_int("REMINDER_MIN_GAP_HOURS", 24)
+    )
+    reminder_check_interval_minutes: int = field(
+        default_factory=lambda: _get_int("REMINDER_CHECK_INTERVAL_MINUTES", 30)
+    )
+
+
+settings = Settings()

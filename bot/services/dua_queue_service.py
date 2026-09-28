@@ -41,6 +41,29 @@ async def count_active_members(session: AsyncSession, chat_id: int) -> int:
     return result.scalar_one() or 0
 
 
+async def _find_open_queue(
+    session: AsyncSession, owner_user_id: int, now: datetime
+) -> DuaQueue | None:
+    """
+    پنلِ هنوز بازِ این کاربر (نه بسته، نه پر، نه منقضی) را برمی‌گرداند؛ در غیر این صورت None.
+    برای اینکه صاحب پنل بتواند دوباره دستور «التماس دعا» را بزند و فقط پنلش را ببیند.
+    """
+    result = await session.execute(
+        select(DuaQueue)
+        .where(DuaQueue.owner_user_id == owner_user_id, DuaQueue.closed.is_(False))
+        .order_by(DuaQueue.id.desc())
+    )
+    for queue in result.scalars().all():
+        if dua_queue_domain.is_queue_open(
+            closed=queue.closed,
+            answers_count=queue.answers_count,
+            expires_at=queue.expires_at,
+            now=now,
+        ):
+            return queue
+    return None
+
+
 async def _has_recent_queue(session: AsyncSession, owner_user_id: int, now: datetime) -> bool:
     cutoff = now - dua_queue_domain.QUEUE_OWNER_COOLDOWN
     result = await session.execute(
@@ -132,6 +155,8 @@ class CreateQueueResult:
     NOT_STARTED = "not_started"
     QUOTA_NOT_COMPLETE = "quota_not_complete"
     OWNER_COOLDOWN = "owner_cooldown"
+    # کاربر همین الان یک پنل باز دارد -> پنل جدید ساخته نمی‌شود، فقط وضعیت پنل فعلی نمایش داده می‌شود.
+    ACTIVE_QUEUE_EXISTS = "active_queue_exists"
 
 
 @dataclass
@@ -157,6 +182,12 @@ async def create_dua_queue(
         return CreateQueueOutcome(
             result=CreateQueueResult.QUOTA_NOT_COMPLETE, daily_free_dhikr_count=today_count
         )
+
+    # اگر پنل باز دارد (هنوز ۵ نفر پاسخ نداده‌اند و ۱۲ ساعت نگذشته)، پیام محدودیت ۲۴ ساعته
+    # نباید بیاید؛ فقط همان پنل نمایش داده می‌شود. محدودیت ۲۴ ساعته بعد از بسته شدن پنل اعمال می‌شود.
+    open_queue = await _find_open_queue(session, user.id, now)
+    if open_queue is not None:
+        return CreateQueueOutcome(result=CreateQueueResult.ACTIVE_QUEUE_EXISTS, queue=open_queue)
 
     if await _has_recent_queue(session, user.id, now):
         return CreateQueueOutcome(result=CreateQueueResult.OWNER_COOLDOWN)

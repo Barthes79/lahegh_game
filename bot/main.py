@@ -17,6 +17,7 @@ from bot.handlers import (
     dua_queue,
     group_messages,
     job_panel,
+    store_panel,
     tasbih_panel,
 )
 from bot.jobs.scheduler import reminder_loop
@@ -42,6 +43,7 @@ async def main() -> None:
     dp.include_router(dua_queue.router)
     dp.include_router(dhikr_circle.router)
     dp.include_router(job_panel.router)
+    dp.include_router(store_panel.router)
     dp.include_router(group_messages.router)
 
     reminder_task = asyncio.create_task(reminder_loop(bot))

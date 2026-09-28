@@ -20,7 +20,7 @@ from datetime import datetime, timezone
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from bot.database.models import DuaQueue, DuaQueueAnswer, User
+from bot.database.models import DuaQueue, DuaQueueAnswer, DuaQueueExtraMessage, User
 from bot.domain import dua_queue as dua_queue_domain
 from bot.domain.dhikr_data import DUA_QUEUE_DHIKR_BY_KEY, DUA_QUEUE_DHIKR_LIST, DhikrDefinition
 from bot.domain.normalization import normalize_text
@@ -220,7 +220,23 @@ async def find_queue_by_panel_message(
     result = await session.execute(
         select(DuaQueue).where(DuaQueue.chat_id == chat_id, DuaQueue.message_id == message_id)
     )
-    return result.scalar_one_or_none()
+    queue = result.scalar_one_or_none()
+    if queue is not None:
+        return queue
+    # ریپلای روی پیام وضعیتِ اضافه (وقتی صاحب پنل دوباره «التماس دعا» زده) هم پاسخ به پنل است.
+    extra = await session.execute(
+        select(DuaQueue)
+        .join(DuaQueueExtraMessage, DuaQueueExtraMessage.queue_id == DuaQueue.id)
+        .where(DuaQueueExtraMessage.chat_id == chat_id, DuaQueueExtraMessage.message_id == message_id)
+    )
+    return extra.scalar_one_or_none()
+
+
+async def register_extra_panel_message(
+    session: AsyncSession, queue_id: int, chat_id: int, message_id: int
+) -> None:
+    session.add(DuaQueueExtraMessage(queue_id=queue_id, chat_id=chat_id, message_id=message_id))
+    await session.flush()
 
 
 # ---------------------------------------------------------------------------

@@ -400,6 +400,30 @@ async def test_level2_dua_queue() -> None:
             )
     check(create_outcome3.result == CreateQueueResult.OWNER_COOLDOWN, "ساخت پنل زودتر از ۲۴ ساعت رد شد")
 
+    print("\n== Level 2: صاحب پنل بازِ خودش دوباره دستور بزند -> پنل فعلی، نه پیام ۲۴ ساعته ==")
+    t5, _ = await _dua_owner_completes_quota(t2 + timedelta(hours=26), "روز برای پنل فعال")
+    async with async_session_factory() as session:
+        async with session.begin():
+            o5 = await get_or_create_user(session, DUA_QUEUE_OWNER_ID, "tester", "Tester")
+            c5 = await create_dua_queue(session, o5, DUA_QUEUE_CHAT_ID, now=t5)
+    check(c5.result == CreateQueueResult.SUCCESS, "پنل جدید برای تست پنل فعال ساخته شد")
+    async with async_session_factory() as session:
+        async with session.begin():
+            o5 = await get_or_create_user(session, DUA_QUEUE_OWNER_ID, "tester", "Tester")
+            again = await create_dua_queue(session, o5, DUA_QUEUE_CHAT_ID, now=t5 + timedelta(minutes=5))
+    check(again.result == CreateQueueResult.ACTIVE_QUEUE_EXISTS, "پنل باز -> ACTIVE_QUEUE_EXISTS (نه OWNER_COOLDOWN)")
+    check(again.queue is not None and again.queue.id == c5.queue.id, "همان پنل فعلی برگردانده شد")
+    async with async_session_factory() as session:
+        async with session.begin():
+            row = await session.get(DuaQueue, c5.queue.id)
+            row.closed = True
+            row.closed_reason = "max_answers"
+    async with async_session_factory() as session:
+        async with session.begin():
+            o5 = await get_or_create_user(session, DUA_QUEUE_OWNER_ID, "tester", "Tester")
+            after = await create_dua_queue(session, o5, DUA_QUEUE_CHAT_ID, now=t5 + timedelta(minutes=10))
+    check(after.result == CreateQueueResult.OWNER_COOLDOWN, "بعد از بسته شدن پنل -> محدودیت ۲۴ ساعته")
+
     print("\n== Level 2: Job خودکار بستن پنل‌های منقضی (idempotent) ==")
     t4, _ = await _dua_owner_completes_quota(t2 + timedelta(hours=25), "روز سوم")
     async with async_session_factory() as session:

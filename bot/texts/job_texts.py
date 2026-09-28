@@ -1,5 +1,5 @@
 """
-متن‌های نمایشی Level 3 (مشاغل، ابزار، مارکت). متن‌های پنل‌ها با HTML (parse_mode پیش‌فرض ربات)
+متن‌های نمایشی Level 3 (مشاغل، ابزار). متن‌های پنل‌ها با HTML (parse_mode پیش‌فرض ربات)
 ساخته می‌شوند؛ فقط پیام ورود به سطح ۳ مثل بقیه‌ی milestoneها با Markdown ارسال می‌شود.
 """
 from __future__ import annotations
@@ -87,7 +87,7 @@ def job_chosen(job: JobDef) -> str:
     return (
         f"✅ حالا {job.emoji} <b>{job.name}</b> هستی!\n"
         f"💰 {_money(jd.STARTING_TOMAN)} برای شروع بهت داده شد.\n\n"
-        f"اول از «مارکت» {job.raw_name} بخر، بعد «شروع تولید» رو بزن و ذکر بگو."
+        f"اول از «فروشگاه» {job.raw_name} بخر، بعد «شروع تولید» رو بزن و ذکر بگو."
     )
 
 
@@ -226,7 +226,7 @@ def production_started(job: JobDef, product: ProductDef) -> str:
     )
 
 
-NO_RAW_MATERIAL = "🧺 ماده‌ی اولیه‌ی این محصول رو نداری؛ اول از «مارکت» بخر."
+NO_RAW_MATERIAL = "🧺 ماده‌ی اولیه‌ی این محصول رو نداری؛ اول از «فروشگاه» بخر."
 ALREADY_PRODUCING = "⚙️ یک تولید در جریانه؛ اول اون رو تموم کن."
 
 
@@ -246,38 +246,6 @@ def production_complete_group(product: ProductDef, produced: dict[int, int]) -> 
     )
 
 
-# ---------------------------------------------------------------------------
-# مارکت
-# ---------------------------------------------------------------------------
-
-
-def market_page(
-    job: JobDef, user_level: int, toman: int, raw_stock: dict[str, int], sell_total: int
-) -> str:
-    lines = [
-        f"🏬 <b>مارکت {job.name}</b>",
-        f"💰 {_money(toman)}",
-        "",
-        f"🛒 <b>خرید {job.raw_name}</b> (از {job.supplier})",
-    ]
-    for p in jd.unlocked_products(job, user_level):
-        lines.append(
-            f"  {p.emoji} {job.raw_name} {p.name} — {_money(p.raw_price)}"
-            f" (موجود: {_n(raw_stock.get(p.key, 0))})"
-        )
-    lines += ["", f"💵 ارزش فروش انبار: {_money(sell_total)}"]
-    return "\n".join(lines)
-
-
-def bought(job: JobDef, product: ProductDef, quantity: int, total: int) -> str:
-    return f"🛒 {_n(quantity)} {job.raw_name} {product.name} خریدی ({_money(total)})."
-
-
-def sold(total: int) -> str:
-    return f"💵 محصولاتت فروخته شد و {_money(total)} گرفتی."
-
-
-NOTHING_TO_SELL = "📦 انبارت خالیه."
 NO_JOB_YET = "اول باید یک شغل انتخاب کنی. بنویس: «شغل»"
 
 

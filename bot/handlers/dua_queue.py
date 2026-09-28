@@ -67,6 +67,10 @@ async def create_dua_queue_command(message: Message) -> None:
         # بازی هنوز شروع نشده -> بی‌سروصدا نادیده بگیر (مثل بقیه‌ی قابلیت‌های قفل).
         return
 
+    if outcome.result == CreateQueueResult.ACTIVE_QUEUE_EXISTS:
+        await _show_active_panel(message, outcome.queue)
+        return
+
     if outcome.result == CreateQueueResult.QUOTA_NOT_COMPLETE:
         await message.reply(
             texts.dua_queue_quota_not_complete(
@@ -101,6 +105,49 @@ async def create_dua_queue_command(message: Message) -> None:
             await session.execute(
                 update(DuaQueue).where(DuaQueue.id == queue.id).values(message_id=sent.message_id)
             )
+
+
+async def _show_active_panel(message: Message, queue: DuaQueue) -> None:
+    """
+    صاحب پنل که پنلش هنوز بازه دوباره «التماس دعا» زده: پنل جدید نمی‌سازیم و پیام محدودیت
+    ۲۴ ساعته هم نمی‌دهیم؛ وضعیت فعلی پنل را (ریپلای روی خودِ پیام پنل) نشان می‌دهیم.
+    """
+    from datetime import datetime, timezone
+
+    async with async_session_factory() as session:
+        fresh = await session.get(DuaQueue, queue.id)
+        if fresh is None:
+            return
+        view = await get_panel_view(session, fresh)
+
+    expires_at = fresh.expires_at
+    if expires_at.tzinfo is None:
+        expires_at = expires_at.replace(tzinfo=timezone.utc)
+    remaining = int((expires_at - datetime.now(timezone.utc)).total_seconds())
+
+    text = texts.dua_queue_active_panel_text(
+        fresh.answers_count,
+        dua_queue_domain.QUEUE_MAX_ANSWERS,
+        responders=view.responders,
+        owner_earned=view.owner_earned,
+        remaining_seconds=remaining,
+    )
+
+    # اگر پنل در همین گروه است، روی پیام اصلی پنل ریپلای می‌زنیم تا مستقیم به آن برود.
+    reply_to = fresh.message_id if fresh.chat_id == message.chat.id else None
+    if reply_to is not None:
+        try:
+            await message.bot.send_message(
+                chat_id=message.chat.id,
+                text=text,
+                parse_mode="HTML",
+                reply_to_message_id=reply_to,
+                allow_sending_without_reply=True,
+            )
+            return
+        except Exception:  # noqa: BLE001
+            logger.debug("ارسال وضعیت پنل فعال ناموفق بود؛ ارسال ساده", exc_info=True)
+    await message.reply(text, parse_mode="HTML")
 
 
 # ---------------------------------------------------------------------------

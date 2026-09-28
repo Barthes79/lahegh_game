@@ -292,6 +292,35 @@ class UserProduct(Base):
     quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
+class MarketListing(Base):
+    """آگهی فروش یک کاربر در فروشگاه (تعداد از انبار فروشنده کم شده است)."""
+
+    __tablename__ = "market_listings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    seller_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    product_key: Mapped[str] = mapped_column(String, nullable=False)
+    stars: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    unit_price: Mapped[int] = mapped_column(Integer, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
+class MarketPricePrompt(Base):
+    """درخواست ورود قیمت: کاربر باید روی پیام پنل ریپلای کند و قیمت را بنویسد."""
+
+    __tablename__ = "market_price_prompts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    product_key: Mapped[str] = mapped_column(String, nullable=False)
+    stars: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
 class ProcessedUpdate(Base):
     """
     برای جلوگیری از پردازش دوباره‌ی یک update تلگرام (retry، double click و ...).

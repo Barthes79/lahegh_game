@@ -39,6 +39,7 @@ from bot.domain.milestones import (
     COMMAND_MARKET,
     COMMAND_NAMEH_AMAL,
     COMMAND_TASBIH,
+    COMMAND_WAREHOUSE,
     MILESTONE_LEVEL_UP_3,
 )
 from bot.domain.normalization import normalize_text
@@ -190,6 +191,12 @@ async def handle_text_message(
         from bot.handlers.job_panel import show_job_panel
 
         await show_job_panel(message)
+        return
+
+    if normalized == COMMAND_WAREHOUSE:
+        from bot.handlers.job_panel import show_warehouse_panel
+
+        await show_warehouse_panel(message)
         return
 
     if normalized == COMMAND_MARKET:

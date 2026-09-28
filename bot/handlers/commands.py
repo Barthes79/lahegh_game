@@ -21,7 +21,7 @@ from sqlalchemy import func, select
 
 from bot.database.engine import async_session_factory
 from bot.domain.dhikr_data import DHIKR_LIST
-from bot.domain.salawat_data import LEVEL_2_REQUIRED_SALAWAT
+from bot.domain.salawat_data import get_level_required_salawat
 from bot.domain.tasbih_data import get_dhikr_cooldown_for_level
 from bot.keyboards.inline import (
     bank_azkar_main_keyboard,
@@ -230,7 +230,7 @@ async def show_nameh_amal(message: Message) -> None:
             start_date_str=start_date_str,
             level=user.level,
             salawat_progress=user.level_progress,
-            salawat_progress_total=(LEVEL_2_REQUIRED_SALAWAT if user.level >= 2 else 12),
+            salawat_progress_total=get_level_required_salawat(user.level),
             salawat_count=user.salawat_count,
             dhikr_count=user.dhikr_count,
             noor_current=user.noor_current,

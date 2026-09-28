@@ -121,6 +121,11 @@ async def _render(session, user: User, page: str) -> tuple[str, InlineKeyboardMa
     return await build_main_page(session, user)
 
 
+def _has_access(user: User) -> bool:
+    """سطح ۳ به بالا، یا کسی که قبلاً شغل انتخاب کرده (مثلاً بعد از ریست سطح با کد تست)."""
+    return user.level >= jd.JOB_UNLOCK_LEVEL or user.job_key is not None
+
+
 # ---------------------------------------------------------------------------
 # دستورات متنی («شغل» / «مارکت»)
 # ---------------------------------------------------------------------------
@@ -132,7 +137,7 @@ async def _open_panel(message: Message, page: str) -> None:
     async with async_session_factory() as session:
         user = await get_user_by_telegram_id(session, message.from_user.id)
         # قابلیت هنوز باز نشده -> نادیده بگیر (مثل بقیه‌ی قابلیت‌های قفل)
-        if user is None or user.level < jd.JOB_UNLOCK_LEVEL:
+        if user is None or not _has_access(user):
             return
         if page == PAGE_MARKET and user.job_key is None:
             await message.reply(jt.NO_JOB_YET)
@@ -185,7 +190,7 @@ async def on_job_callback(callback: CallbackQuery, event_update: Update) -> None
             user = await get_or_create_user(
                 session, owner_id, callback.from_user.username, callback.from_user.first_name
             )
-            if user.level < jd.JOB_UNLOCK_LEVEL:
+            if not _has_access(user):
                 await callback.answer()
                 return
 

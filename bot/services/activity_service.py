@@ -25,12 +25,16 @@ from bot.domain.dhikr_data import CIRCLE_DISPLAY_DHIKR_KEYS, DHIKR_BY_KEY, Dhikr
 from bot.domain.milestones import (
     MILESTONE_BANK_AZKAR,
     MILESTONE_LEVEL_UP,
+    MILESTONE_LEVEL_UP_3,
     MILESTONE_NAMEH_AMAL,
     MILESTONE_TASBIH,
 )
+from bot.services.job_service import ProductionProgress, apply_production_dhikr
 from bot.domain.salawat_data import (
     LEVEL_1_REQUIRED_SALAWAT,
     LEVEL_2_REQUIRED_SALAWAT,
+    LEVEL_3_REQUIRED_SALAWAT,
+    get_level_required_salawat,
     SALAWAT_NOOR_REWARD,
     SALAWAT_PROGRESS_STEP,
 )
@@ -94,6 +98,9 @@ class ActivityOutcome:
     # هرکدام (telegram_id, username, first_name) — برای رندر پیام milestone بدون کوئری اضافه
     circle_milestone_winners: list[tuple[int, str | None, str | None]] = field(default_factory=list)
     is_circle_dhikr: bool = False
+
+    # --- Level 3: تولید شغل --- (فقط برای ذکرهای عادی کاربری که تولید فعال دارد)
+    production: ProductionProgress | None = None
 
 
 async def _is_dhikr_unlocked(session: AsyncSession, user: User, dhikr: DhikrDefinition) -> bool:
@@ -303,18 +310,29 @@ async def _register_salawat(
             outcome.milestone_kind = "level_up"
 
     elif user.level == 2:
-        # بعد از صلوات سیزدهم، صلوات‌های بعدی پیشرفت سطح ۲ را از 1/24 ادامه می‌دهند.
+        if user.level_progress >= LEVEL_2_REQUIRED_SALAWAT:
+            # پیشرفت سطح ۲ کامل (۲۴/۲۴) بوده و کاربر صلوات بعدی را گفته: ورود به سطح ۳
+            # (مثل سطح ۱: صلوات بعد از ۱۲/۱۲ اولین صلوات سطح جدید است و 1/N نشان داده می‌شود).
+            user.level = 3
+            user.level_progress = 1
+            outcome.level_up_triggered = True
+            outcome.milestone_kind = MILESTONE_LEVEL_UP_3
+        else:
+            # بعد از صلوات سیزدهم، صلوات‌های بعدی پیشرفت سطح ۲ را از 1/24 ادامه می‌دهند.
+            user.level_progress = min(
+                LEVEL_2_REQUIRED_SALAWAT, user.level_progress + SALAWAT_PROGRESS_STEP
+            )
+
+    elif user.level == 3:
         user.level_progress = min(
-            LEVEL_2_REQUIRED_SALAWAT, user.level_progress + SALAWAT_PROGRESS_STEP
+            LEVEL_3_REQUIRED_SALAWAT, user.level_progress + SALAWAT_PROGRESS_STEP
         )
 
     await session.flush()
 
     outcome.noor_current = user.noor_current
     outcome.level_progress = user.level_progress
-    outcome.level_progress_total = (
-        LEVEL_2_REQUIRED_SALAWAT if user.level == 2 else LEVEL_1_REQUIRED_SALAWAT
-    )
+    outcome.level_progress_total = get_level_required_salawat(user.level)
     outcome.next_cooldown_seconds = get_salawat_cooldown_seconds(user.salawat_count - 1)
 
     if outcome.milestone_kind is not None:
@@ -399,6 +417,15 @@ async def _register_dhikr(
         outcome.circle_milestone_winners = [
             (u.telegram_id, u.username, u.first_name) for u in circle_result.milestone.winners
         ]
+
+    # --- Level 3: پیشرفت تولید شغل --- فقط ذکر عادیِ کاربر (نه ذکر حلقه، نه پاسخ به التماس دعا).
+    # روی همان ذکرِ از قبل موفق اعمال می‌شود؛ سیستم ثبت ذکر موازی ساخته نشده.
+    if (
+        not outcome.is_circle_dhikr
+        and not is_dua_queue_answer
+        and dhikr.key not in CIRCLE_DISPLAY_DHIKR_KEYS
+    ):
+        outcome.production = await apply_production_dhikr(session, user)
 
     outcome.noor_current = user.noor_current
     outcome.next_cooldown_seconds = next_cooldown_seconds

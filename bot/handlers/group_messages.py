@@ -144,6 +144,34 @@ async def handle_text_message(
         return
 
     # -----------------------------------------------------------------------
+    # تست: ریست شغل (موقت؛ قبل از انتشار نهایی حذف شود)
+    # شغل، ابزار، تومان، مواد اولیه، تولید در جریان و انبار محصولات را پاک می‌کند تا
+    # بشود دوباره شغل انتخاب کرد. نور و سطح دست‌نخورده می‌مانند.
+    # -----------------------------------------------------------------------
+    if normalized == "ریست شغل":
+        from sqlalchemy import delete
+
+        from bot.database.models import UserProduct, UserProduction, UserRawMaterial
+
+        async with async_session_factory() as session:
+            async with session.begin():
+                user = await get_or_create_user(
+                    session,
+                    message.from_user.id,
+                    message.from_user.username,
+                    message.from_user.first_name,
+                )
+                for model in (UserProduction, UserRawMaterial, UserProduct):
+                    await session.execute(delete(model).where(model.user_id == user.id))
+                user.job_key = None
+                user.job_selected_at = None
+                user.tool_level = 0
+                user.toman = 0
+                await session.flush()
+        await message.reply("♻️ شغلت ریست شد. بنویس: «شغل» و دوباره انتخاب کن.")
+        return
+
+    # -----------------------------------------------------------------------
     # دعوت مستقیم به حلقه
     # -----------------------------------------------------------------------
     # سه حالت مجاز:

@@ -175,6 +175,18 @@ class DuaQueueAnswer(Base):
     )
 
 
+class DuaQueueExtraMessage(Base):
+    """پیام وضعیتِ اضافه‌ای که برای یک پنل باز فرستاده شده؛ ریپلای روی آن هم پاسخ به پنل است."""
+
+    __tablename__ = "dua_queue_extra_messages"
+    __table_args__ = (UniqueConstraint("chat_id", "message_id", name="uq_dua_queue_extra_chat_message"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    queue_id: Mapped[int] = mapped_column(ForeignKey("dua_queues.id"), nullable=False)
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+
+
 class DhikrCircle(Base):
     """
     یک «حلقه ذکر» (Level 2). به هیچ تعداد عضوی محدود نیست؛ ۵ نفر فقط شرط milestone

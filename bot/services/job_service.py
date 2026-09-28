@@ -29,7 +29,6 @@ class JobResult:
     PRODUCT_LOCKED = "product_locked"
     ALREADY_PRODUCING = "already_producing"
     MAX_TOOL_FOR_LEVEL = "max_tool_for_level"
-    NOTHING_TO_SELL = "nothing_to_sell"
 
 
 @dataclass
@@ -245,25 +244,3 @@ async def apply_production_dhikr(session: AsyncSession, user: User) -> Productio
 
     await session.flush()
     return progress
-
-
-# ---------------------------------------------------------------------------
-# فروش
-# ---------------------------------------------------------------------------
-
-
-async def sell_all_products(session: AsyncSession, user: User) -> JobOutcome:
-    """همه‌ی محصولات انبار را با قیمت پایه × ضریب ستاره می‌فروشد و تومان می‌دهد."""
-    items = await get_inventory(session, user)
-    total = 0
-    for item in items:
-        product = jd.PRODUCT_BY_KEY.get(item.product_key)
-        if product is None:
-            continue
-        total += jd.get_sell_price(product, item.stars) * item.quantity
-        item.quantity = 0
-    if total <= 0:
-        return JobOutcome(JobResult.NOTHING_TO_SELL)
-    user.toman += total
-    await session.flush()
-    return JobOutcome(JobResult.SUCCESS, total)

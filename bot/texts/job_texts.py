@@ -242,7 +242,7 @@ def production_complete_group(product: ProductDef, produced: dict[int, int]) -> 
     return (
         f"✅ تولید {product.emoji} {product.name} تموم شد!\n"
         f"📦 {'، '.join(parts)} به انبارت اضافه شد.\n"
-        "برای فروش: «مارکت»"
+        "برای دیدن انبار بنویس: «انبار»"
     )
 
 
@@ -279,3 +279,39 @@ def sold(total: int) -> str:
 
 NOTHING_TO_SELL = "📦 انبارت خالیه."
 NO_JOB_YET = "اول باید یک شغل انتخاب کنی. بنویس: «شغل»"
+
+
+# ---------------------------------------------------------------------------
+# انبار
+# ---------------------------------------------------------------------------
+
+
+def warehouse_page(
+    job: JobDef,
+    user_level: int,
+    toman: int,
+    raw_stock: dict[str, int],
+    inventory: list[tuple[ProductDef, int, int]],
+    sell_total: int,
+) -> str:
+    lines = [f"📦 <b>انبار {job.name}</b>", f"💰 {_money(toman)}", "", "🧾 <b>محصولات</b>"]
+    if inventory:
+        for product, stars, qty in inventory:
+            lines.append(
+                f"  {product.emoji} {product.name} {_stars(stars)} × {_n(qty)}"
+                f" — هرکدام {_money(jd.get_sell_price(product, stars))}"
+            )
+        lines.append(f"💵 ارزش فروش کل: {_money(sell_total)}")
+    else:
+        lines.append("  خالی — با «شغل» و «شروع تولید» محصول بساز.")
+
+    lines += ["", f"🧺 <b>{job.raw_name}‌ها</b>"]
+    any_raw = False
+    for p in jd.unlocked_products(job, user_level):
+        qty = raw_stock.get(p.key, 0)
+        if qty:
+            any_raw = True
+            lines.append(f"  {p.emoji} {job.raw_name} {p.name} × {_n(qty)}")
+    if not any_raw:
+        lines.append("  خالی")
+    return "\n".join(lines)

@@ -353,7 +353,11 @@ async def _register_dhikr(
         next_cooldown_seconds = circle_domain.CIRCLE_DHIKR_COOLDOWN_SECONDS
     else:
         user.last_dhikr_at = now
-        user.last_dhikr_cooldown_seconds = get_dhikr_cooldown_for_level(user.tasbih_level)
+        user.last_dhikr_cooldown_seconds = (
+            dhikr.cooldown_seconds
+            if dhikr.cooldown_seconds is not None
+            else get_dhikr_cooldown_for_level(user.tasbih_level)
+        )
         next_cooldown_seconds = user.last_dhikr_cooldown_seconds
     user.dhikr_count += 1
 

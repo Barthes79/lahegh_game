@@ -203,15 +203,120 @@ async def main() -> None:
     inv = await with_user(U, _inv)
     check(sum(q for _, q in inv) == 2, "دو محصول در انبار است")
 
-    print("\n== فروش ==")
-    async def _sell(s, user):
+    print("\n== فروشگاه: NPC ==")
+    from bot.domain import store_data as sd
+    from bot.services import store_service as ss
+    from bot.services.store_service import StoreResult
+
+    for k in ("farmer_potato", "attar_saffron"):
+        for st in range(1, 6):
+            lo, hi = sd.listing_bounds(k, st)
+            m = sd.market_price(k, st)
+            check(sd.npc_buy_price(k, st) < lo <= m <= hi < sd.npc_sell_price(k, st), f"{k} {st}⭐: NPC ارزان‌تر می‌خرد و گران‌تر می‌فروشد، بازه‌ی آگهی بینشان است")
+
+    async def _npc_sell(s, user):
         before = user.toman
-        r = await js.sell_all_products(s, user)
-        r2 = await js.sell_all_products(s, user)
-        return r, r2, user.toman - before
-    r, r2, gained = await with_user(U, _sell)
-    check(r.result == JobResult.SUCCESS and gained == r.detail and gained >= 2 * 1600, "فروش انبار تومان می‌دهد")
-    check(r2.result == JobResult.NOTHING_TO_SELL, "انبار خالی چیزی برای فروش ندارد")
+        inv = await js.get_inventory(s, user)
+        expected = sum(sd.npc_buy_price(i.product_key, i.stars) * i.quantity for i in inv)
+        # همه‌ی ردیف‌ها به NPC
+        for i in inv:
+            await ss.npc_sell(s, user, i.product_key, i.stars, None)
+        r_empty = await ss.npc_sell(s, user, "farmer_potato", 1, None)
+        return user.toman - before, expected, r_empty
+    gained, expected, r_empty = await with_user(U, _npc_sell)
+    check(gained == expected and gained > 0, "فروش به NPC تومان می‌دهد (کمتر از بازار)")
+    check(r_empty.result == StoreResult.NOT_ENOUGH_STOCK, "فروش بدون موجودی رد می‌شود")
+
+    async def _npc_buy(s, user):
+        user.toman = 10000
+        r_poor = await ss.npc_buy(s, user, "attar_saffron", 5, 1)
+        r = await ss.npc_buy(s, user, "farmer_potato", 3, 2)
+        return r_poor, r, user.toman
+    r_poor, r, toman_after = await with_user(U, _npc_buy)
+    check(r_poor.result == StoreResult.INSUFFICIENT_TOMAN, "خرید از NPC با تومان ناکافی رد می‌شود")
+    check(r.result == StoreResult.SUCCESS and toman_after == 10000 - 2 * sd.npc_sell_price("farmer_potato", 3), "خرید از NPC (گران‌تر از بازار)")
+
+    print("\n== فروشگاه: آگهی کاربران ==")
+    S, B = U, 9101  # فروشنده = کاربر U (۲ عدد سیب‌زمینی ۳⭐ دارد)، خریدار = B
+    async def _mk_buyer(s, user):
+        user.level = 3
+        user.toman = 50000
+    await with_user(B, _mk_buyer)
+
+    lo, hi = sd.listing_bounds("farmer_potato", 3)
+    async def _bad_prices(s, user):
+        a = await ss.create_listing(s, user, "farmer_potato", 3, 1, lo - 1)
+        b = await ss.create_listing(s, user, "farmer_potato", 3, 1, hi + 1)
+        c = await ss.create_listing(s, user, "farmer_potato", 3, 5, lo)  # موجودی کافی نیست
+        return a, b, c
+    a, b, c = await with_user(S, _bad_prices)
+    check(a.result == StoreResult.PRICE_TOO_LOW and a.detail == lo, "قیمت زیر حداقل رد می‌شود")
+    check(b.result == StoreResult.PRICE_TOO_HIGH and b.detail == hi, "قیمت بالای حداکثر رد می‌شود")
+    check(c.result == StoreResult.NOT_ENOUGH_STOCK, "آگهی بیش از موجودی رد می‌شود")
+
+    async def _list_ok(s, user):
+        price = (lo + hi) // 2
+        r = await ss.create_listing(s, user, "farmer_potato", 3, 2, price)
+        inv = {(i.product_key, i.stars): i.quantity for i in await js.get_inventory(s, user)}
+        return r, price, inv.get(("farmer_potato", 3), 0)
+    r, price, left = await with_user(S, _list_ok)
+    check(r.result == StoreResult.SUCCESS and left == 0, "ثبت آگهی با قیمت دلخواه؛ کالا از انبار فروشنده کم شد (escrow)")
+
+    async def _own(s, user):
+        lst = await ss.get_my_listings(s, user)
+        return (await ss.buy_listing(s, user, lst[0].id, 1)).result, lst[0].id
+    own_res, lid = await with_user(S, _own)
+    check(own_res == StoreResult.OWN_LISTING, "خرید از آگهی خود ممنوع است")
+
+    async def _buy(s, user):
+        before_b = user.toman
+        r1 = await ss.buy_listing(s, user, lid, 1)
+        seller = await get_or_create_user(s, S, f"u{S}", f"U{S}")
+        return r1, before_b - user.toman, seller.telegram_id
+    seller_before = await with_user(S, lambda s, u: _ret(u.toman))
+    r1, spent, seller_tg = await with_user(B, _buy)
+    check(r1.result == StoreResult.SUCCESS and spent == price and r1.seller_telegram_id == S, "خریدار از آگهی می‌خرد و تومان از او کم می‌شود")
+    seller_after = await with_user(S, lambda s, u: _ret(u.toman))
+    check(seller_after - seller_before == price, "تومان به فروشنده رسید")
+    inv_b = await with_user(B, _inv)
+    check(inv_b == [(3, 1)], "کالا به انبار خریدار اضافه شد")
+
+    async def _poor_buy(s, user):
+        user.toman = 1
+        r = await ss.buy_listing(s, user, lid, 1)
+        user.toman = 50000
+        return r
+    check((await with_user(B, _poor_buy)).result == StoreResult.INSUFFICIENT_TOMAN, "خرید از آگهی با تومان ناکافی رد می‌شود")
+
+    async def _cancel(s, user):
+        wrong = await ss.cancel_listing(s, user, lid)
+        return wrong.result
+    check(await with_user(B, _cancel) == StoreResult.NOT_OWNER, "فقط صاحب آگهی می‌تواند لغو کند")
+    async def _cancel_ok(s, user):
+        r = await ss.cancel_listing(s, user, lid)
+        inv = {(i.product_key, i.stars): i.quantity for i in await js.get_inventory(s, user)}
+        gone = await ss.buy_listing(s, user, lid, 1)
+        return r.result, inv.get(("farmer_potato", 3), 0), gone.result
+    res, back, gone = await with_user(S, _cancel_ok)
+    check(res == StoreResult.SUCCESS and back == 1, "لغو آگهی: موجودیِ باقی‌مانده به انبار برگشت")
+    check(gone == StoreResult.LISTING_NOT_FOUND, "آگهی لغوشده دیگر وجود ندارد")
+
+    print("\n== فروشگاه: ورود قیمت با ریپلای ==")
+    from bot.handlers.store_panel import parse_price
+    check(parse_price("۲٬۵۰۰ تومان") == 2500 and parse_price("2,500") == 2500 and parse_price("۳۲۰۰") == 3200, "پارس عدد فارسی/کاما/تومان")
+    check(parse_price("abc") is None and parse_price("") is None and parse_price("12a") is None, "متن غیرعددی رد می‌شود")
+
+    async def _prompt(s, user):
+        r = await ss.set_price_prompt(s, user, "farmer_potato", 3, 1, -100, 55)
+        p = await ss.get_price_prompt(s, user)
+        low = await ss.submit_price_from_prompt(s, user, lo - 5)
+        still = await ss.get_price_prompt(s, user)
+        ok = await ss.submit_price_from_prompt(s, user, lo)
+        gone = await ss.get_price_prompt(s, user)
+        return r.result, p is not None, low.result, still is not None, ok.result, gone is None
+    res = await with_user(S, _prompt)
+    check(res == (StoreResult.SUCCESS, True, StoreResult.PRICE_TOO_LOW, True, StoreResult.SUCCESS, True),
+          "قیمت اشتباه: درخواست می‌ماند؛ قیمت درست: آگهی ثبت و درخواست پاک می‌شود")
 
     print("\n== کاربر بدون شغل ==")
     out = await act(7001, SALAWAT)
@@ -219,16 +324,34 @@ async def main() -> None:
     check(out.status == OutcomeStatus.SUCCESS and out.production is None, "بدون شغل ذکر عادی مثل قبل کار می‌کند")
 
     print("\n== رندر پنل‌ها ==")
-    from bot.handlers.job_panel import build_main_page, build_market_page
+    from bot.handlers.job_panel import build_main_page
+    from bot.handlers import store_panel as sp
 
     async def _panels(s, user):
         user.level = 3
         m_text, m_kb = await build_main_page(s, user)
-        k_text, k_kb = await build_market_page(s, user)
-        return m_text, m_kb, k_text, k_kb
-    m_text, m_kb, k_text, k_kb = await with_user(U, _panels)
+        pages = [
+            await sp.page_home(s, user),
+            await sp.page_raw(s, user),
+            await sp.page_shop(s, user),
+            await sp.page_category(s, user, "farmer"),
+            await sp.page_product(s, user, "farmer_potato"),
+            await sp.page_sell(s, user),
+            await sp.page_mine(s, user),
+        ]
+        user.toman = 99999
+        await js.buy_raw_material(s, user, "farmer_potato", 1)
+        await js.start_production(s, user, "farmer_potato")
+        for _ in range(jd.DHIKR_PER_BATCH):
+            await js.apply_production_dhikr(s, user)
+        inv = await js.get_inventory(s, user)
+        pages.append(await sp.page_item(s, user, inv[0].product_key, inv[0].stars))
+        return m_text, m_kb, pages
+    m_text, m_kb, pages = await with_user(U, _panels)
     check("کشاورز" in m_text and len(m_kb.inline_keyboard) >= 2, "پنل اصلی شغل رندر می‌شود")
-    check("مارکت" in k_text and all(len(b.callback_data.encode()) <= 64 for r in k_kb.inline_keyboard for b in r), "پنل مارکت رندر می‌شود و callback_data زیر ۶۴ بایت است")
+    check(any(b.callback_data.startswith("st:home") for r in m_kb.inline_keyboard for b in r), "پنل شغل دکمه‌ی «فروشگاه» دارد")
+    check(len(pages) == 8 and all(t for t, _ in pages), "همه‌ی صفحه‌های فروشگاه رندر می‌شوند")
+    check(all(len(b.callback_data.encode()) <= 64 for _, k in pages for r in k.inline_keyboard for b in r), "callback_data همه‌ی دکمه‌ها زیر ۶۴ بایت است")
     from bot.handlers.job_panel import build_warehouse_page
 
     async def _wh(s, user):
@@ -239,7 +362,7 @@ async def main() -> None:
         return await build_warehouse_page(s, user)
     w_text, w_kb = await with_user(U, _wh)
     check("انبار" in w_text and "سیب‌زمینی" in w_text and "×" in w_text, "صفحه‌ی انبار محصولات تولیدشده را نشان می‌دهد")
-    check(any("sell" in b.callback_data for r in w_kb.inline_keyboard for b in r), "دکمه‌ی فروش در انبار هست")
+    check(any(b.callback_data.startswith("st:home") for r in w_kb.inline_keyboard for b in r), "انبار دکمه‌ی رفتن به فروشگاه دارد")
     async def _nojob(s, user):
         return await build_main_page(s, user)
     c_text, c_kb = await with_user(8001, _nojob_lvl3)

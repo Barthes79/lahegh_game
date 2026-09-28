@@ -30,6 +30,7 @@ from bot.services.dua_queue_service import (
     find_queue_by_panel_message,
     get_panel_view,
     get_queue_dhikr,
+    register_extra_panel_message,
 )
 from bot.services.user_service import get_or_create_user
 from bot.texts import messages as texts
@@ -125,29 +126,42 @@ async def _show_active_panel(message: Message, queue: DuaQueue) -> None:
         expires_at = expires_at.replace(tzinfo=timezone.utc)
     remaining = int((expires_at - datetime.now(timezone.utc)).total_seconds())
 
+    dhikr = get_queue_dhikr(fresh)
     text = texts.dua_queue_active_panel_text(
         fresh.answers_count,
         dua_queue_domain.QUEUE_MAX_ANSWERS,
         responders=view.responders,
         owner_earned=view.owner_earned,
         remaining_seconds=remaining,
+        # پنل در گروه دیگری باشد، پاسخ‌گرفتن از این پیام ممکن نیست -> ذکر نشان داده نمی‌شود.
+        dhikr_text=dhikr.canonical_texts[0] if (dhikr and fresh.chat_id == message.chat.id) else None,
     )
 
     # اگر پنل در همین گروه است، روی پیام اصلی پنل ریپلای می‌زنیم تا مستقیم به آن برود.
     reply_to = fresh.message_id if fresh.chat_id == message.chat.id else None
+    sent = None
     if reply_to is not None:
         try:
-            await message.bot.send_message(
+            sent = await message.bot.send_message(
                 chat_id=message.chat.id,
                 text=text,
                 parse_mode="HTML",
                 reply_to_message_id=reply_to,
                 allow_sending_without_reply=True,
             )
-            return
         except Exception:  # noqa: BLE001
             logger.debug("ارسال وضعیت پنل فعال ناموفق بود؛ ارسال ساده", exc_info=True)
-    await message.reply(text, parse_mode="HTML")
+    if sent is None:
+        sent = await message.reply(text, parse_mode="HTML")
+
+    # ریپلای روی این پیام هم باید مثل ریپلای روی پنل اصلی پاسخ حساب شود.
+    if fresh.chat_id == message.chat.id:
+        try:
+            async with async_session_factory() as session:
+                async with session.begin():
+                    await register_extra_panel_message(session, fresh.id, message.chat.id, sent.message_id)
+        except Exception:  # noqa: BLE001
+            logger.warning("ثبت پیام وضعیت پنل التماس دعا ناموفق بود", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

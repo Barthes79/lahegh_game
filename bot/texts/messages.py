@@ -701,6 +701,40 @@ def dua_queue_panel_text(
     return "\n".join(lines)
 
 
+def dua_queue_active_panel_text(
+    answers_count: int,
+    max_answers: int,
+    *,
+    responders: list[tuple[int, str | None]] | None = None,
+    owner_earned: int = 0,
+    remaining_seconds: int = 0,
+) -> str:
+    """پیامی که وقتی صاحبِ پنل باز دوباره «التماس دعا» می‌زند نمایش داده می‌شود (HTML)."""
+    lines = [
+        "🤲 <b>پنل التماس دعای تو هنوز بازه</b>",
+        "",
+        f"پاسخ‌ها: {to_persian_digits(answers_count)} از {to_persian_digits(max_answers)}",
+    ]
+    if responders:
+        lines.append("")
+        lines.append("🤲 دعاکنندگان:")
+        for index, (tg_id, name) in enumerate(responders, start=1):
+            label = escape(name or "کاربر")
+            lines.append(f'{to_persian_digits(index)}. <a href="tg://user?id={tg_id}">{label}</a>')
+    lines.append("")
+    lines.append(f"✨ نور دریافتی تا الان: {to_persian_digits(owner_earned)}")
+    minutes_total = max(int(remaining_seconds) // 60, 0)
+    hours, minutes = divmod(minutes_total, 60)
+    if hours:
+        left = f"{to_persian_digits(hours)} ساعت و {to_persian_digits(minutes)} دقیقه"
+    else:
+        left = f"{to_persian_digits(minutes)} دقیقه"
+    lines.append(f"⏳ حدود {left} دیگه بازه.")
+    lines.append("")
+    lines.append("برای پاسخ‌گرفتن، ذکرِ داخل پیام پنل (همین پیامی که ریپلای شده) استفاده میشه.")
+    return "\n".join(lines)
+
+
 def dua_queue_answer_success(noor_reward: int, noor_current: int) -> str:
     return (
         "🤲 به التماس دعا پاسخ دادی و ذکرت ثبت شد.\n"

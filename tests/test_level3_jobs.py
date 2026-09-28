@@ -229,6 +229,17 @@ async def main() -> None:
     m_text, m_kb, k_text, k_kb = await with_user(U, _panels)
     check("کشاورز" in m_text and len(m_kb.inline_keyboard) >= 2, "پنل اصلی شغل رندر می‌شود")
     check("مارکت" in k_text and all(len(b.callback_data.encode()) <= 64 for r in k_kb.inline_keyboard for b in r), "پنل مارکت رندر می‌شود و callback_data زیر ۶۴ بایت است")
+    from bot.handlers.job_panel import build_warehouse_page
+
+    async def _wh(s, user):
+        await js.buy_raw_material(s, user, "farmer_potato", 1)
+        await js.start_production(s, user, "farmer_potato")
+        for _ in range(jd.DHIKR_PER_BATCH):
+            await js.apply_production_dhikr(s, user)
+        return await build_warehouse_page(s, user)
+    w_text, w_kb = await with_user(U, _wh)
+    check("انبار" in w_text and "سیب‌زمینی" in w_text and "×" in w_text, "صفحه‌ی انبار محصولات تولیدشده را نشان می‌دهد")
+    check(any("sell" in b.callback_data for r in w_kb.inline_keyboard for b in r), "دکمه‌ی فروش در انبار هست")
     async def _nojob(s, user):
         return await build_main_page(s, user)
     c_text, c_kb = await with_user(8001, _nojob_lvl3)

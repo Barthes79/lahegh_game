@@ -23,10 +23,11 @@ COMMAND_DUA_QUEUE = "التماس دعا"
 # Level 2: حلقه ذکر — مثل صف دعا، در گروه و PV هر دو معنا دارد (پنل شخصی کاربر است).
 COMMAND_DHIKR_CIRCLE = "حلقه ذکر"
 
-# Level 3: مشاغل و مارکت — پنل شخصی کاربر؛ در گروه و PV هر دو معنا دارد.
+# Level 3: مشاغل و فروشگاه — پنل شخصی کاربر؛ در گروه و PV هر دو معنا دارد.
 COMMAND_JOB = "شغل"
 COMMAND_JOB_ALIAS = "شغل من"
-COMMAND_MARKET = "مارکت"
+COMMAND_STORE = "فروشگاه"
+COMMAND_MARKET = "مارکت"  # نام قدیمی؛ همان فروشگاه است
 COMMAND_WAREHOUSE = "انبار"
 
 GAME_TRIGGER_COMMANDS = {
@@ -37,6 +38,7 @@ GAME_TRIGGER_COMMANDS = {
     COMMAND_DHIKR_CIRCLE,
     COMMAND_JOB,
     COMMAND_JOB_ALIAS,
+    COMMAND_STORE,
     COMMAND_MARKET,
     COMMAND_WAREHOUSE,
 }

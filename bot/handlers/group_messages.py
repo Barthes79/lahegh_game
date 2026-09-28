@@ -34,8 +34,12 @@ from bot.domain.milestones import (
     COMMAND_BANK_AZKAR,
     COMMAND_DHIKR_CIRCLE,
     COMMAND_DUA_QUEUE,
+    COMMAND_JOB,
+    COMMAND_JOB_ALIAS,
+    COMMAND_MARKET,
     COMMAND_NAMEH_AMAL,
     COMMAND_TASBIH,
+    MILESTONE_LEVEL_UP_3,
 )
 from bot.domain.normalization import normalize_text
 from bot.domain.validator import ActivityKind
@@ -46,6 +50,8 @@ from bot.services.activity_service import (
     OutcomeStatus,
     process_activity,
 )
+from bot.domain import jobs_data as jobs_domain
+from bot.texts import job_texts
 from bot.texts import messages as texts
 from bot.utils.persian_format import render_progress_bar
 
@@ -116,6 +122,27 @@ async def handle_text_message(
         return
 
     # -----------------------------------------------------------------------
+    # تست سریع Level 3 (موقت؛ قبل از انتشار نهایی حذف شود)
+    # -----------------------------------------------------------------------
+    if normalized == "سطح 3":
+        async with async_session_factory() as session:
+            async with session.begin():
+                user = await get_or_create_user(
+                    session,
+                    message.from_user.id,
+                    message.from_user.username,
+                    message.from_user.first_name,
+                )
+                user.level = 3
+                user.level_progress = 1
+                # برای تست شغل/ابزار: اگر نور کم بود تا ۵۰۰۰ پر می‌شود.
+                if user.noor_current < 5000:
+                    user.noor_current = 5000
+                await session.flush()
+        await message.reply("✅ برای تست، وارد سطح ۳ شدی و نورت ۵۰۰۰ شد. بنویس: «شغل»")
+        return
+
+    # -----------------------------------------------------------------------
     # دعوت مستقیم به حلقه
     # -----------------------------------------------------------------------
     # سه حالت مجاز:
@@ -156,6 +183,19 @@ async def handle_text_message(
         from bot.handlers.commands import show_tasbih
 
         await show_tasbih(message)
+        return
+
+    # Level 3: مشاغل و مارکت (پنل شخصی؛ در گروه و PV مجاز)
+    if normalized in (COMMAND_JOB, COMMAND_JOB_ALIAS):
+        from bot.handlers.job_panel import show_job_panel
+
+        await show_job_panel(message)
+        return
+
+    if normalized == COMMAND_MARKET:
+        from bot.handlers.job_panel import show_market_panel
+
+        await show_market_panel(message)
         return
 
     if normalized == COMMAND_DUA_QUEUE:
@@ -410,6 +450,17 @@ async def _render_success(
     # صلوات + نور + نور معنویتت + نوار پیشرفت + قابلیت جدید
     # -----------------------------------------------------------------------
 
+    elif outcome.milestone_kind == MILESTONE_LEVEL_UP_3:
+        await message.reply(
+            job_texts.level_up_3_message(
+                outcome.noor_reward,
+                outcome.noor_current,
+                outcome.level_progress,
+                outcome.level_progress_total,
+            ),
+            parse_mode="Markdown",
+        )
+
     elif outcome.milestone_kind is not None:
         await message.reply(
             texts.salawat_milestone_message(
@@ -537,6 +588,26 @@ async def _render_success(
             ),
             parse_mode="Markdown",
         )
+
+    # -----------------------------------------------------------------------
+    # Level 3: پیشرفت تولید شغل — طبق همان طراحی «بدون شلوغی»، پیشرفت میانی فقط در PV
+    # فرستاده می‌شود و فقط لحظه‌ی تکمیل تولید (و محصولات به‌دست‌آمده) در گروه اعلام می‌شود.
+    # -----------------------------------------------------------------------
+
+    prod = outcome.production
+    if prod is not None:
+        product = jobs_domain.PRODUCT_BY_KEY.get(prod.product_key)
+        if product is not None:
+            if prod.completed:
+                await message.reply(job_texts.production_complete_group(product, prod.produced))
+            else:
+                try:
+                    await bot.send_message(
+                        chat_id=message.from_user.id,
+                        text=job_texts.production_progress_pv(product, prod.done, prod.required),
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.debug("ارسال پیشرفت تولید به PV ناموفق بود", exc_info=True)
 
 
 # ---------------------------------------------------------------------------

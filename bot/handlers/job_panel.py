@@ -32,6 +32,7 @@ router = Router(name="job_panel")
 
 PAGE_MAIN = "main"
 PAGE_MARKET = "market"
+PAGE_WAREHOUSE = "warehouse"
 
 
 # ---------------------------------------------------------------------------
@@ -88,7 +89,7 @@ async def build_main_page(session, user: User) -> tuple[str, InlineKeyboardMarku
     rows = []
     if production is None:
         rows.append([_btn("▶️ شروع تولید", owner_id, "prod")])
-    rows.append([_btn("🏬 مارکت", owner_id, "market")])
+    rows.append([_btn("📦 انبار", owner_id, "wh"), _btn("🏬 مارکت", owner_id, "market")])
     if user.tool_level < jd.max_tool_level_for_user_level(user.level):
         rows.append([_btn(f"🔧 ارتقای {job.tool_name}", owner_id, "tool_ask")])
     return text, _kb(rows)
@@ -115,9 +116,27 @@ async def build_market_page(session, user: User) -> tuple[str, InlineKeyboardMar
     return text, _kb(rows)
 
 
+async def build_warehouse_page(session, user: User) -> tuple[str, InlineKeyboardMarkup]:
+    owner_id = user.telegram_id
+    job = jd.JOB_BY_KEY[user.job_key]
+    inventory = await _inventory_view(session, user)
+    sell_total = sum(jd.get_sell_price(p, s) * q for p, s, q in inventory)
+    text = jt.warehouse_page(
+        job, user.level, user.toman, await js.get_raw_stock(session, user), inventory, sell_total
+    )
+    rows = []
+    if sell_total > 0:
+        rows.append([_btn("💵 فروش همه‌ی محصولات", owner_id, "sell", "wh")])
+    rows.append([_btn("🏬 مارکت", owner_id, "market")])
+    rows.append(_back_row(owner_id))
+    return text, _kb(rows)
+
+
 async def _render(session, user: User, page: str) -> tuple[str, InlineKeyboardMarkup]:
     if page == PAGE_MARKET and user.job_key is not None:
         return await build_market_page(session, user)
+    if page == PAGE_WAREHOUSE and user.job_key is not None:
+        return await build_warehouse_page(session, user)
     return await build_main_page(session, user)
 
 
@@ -139,7 +158,7 @@ async def _open_panel(message: Message, page: str) -> None:
         # قابلیت هنوز باز نشده -> نادیده بگیر (مثل بقیه‌ی قابلیت‌های قفل)
         if user is None or not _has_access(user):
             return
-        if page == PAGE_MARKET and user.job_key is None:
+        if page in (PAGE_MARKET, PAGE_WAREHOUSE) and user.job_key is None:
             await message.reply(jt.NO_JOB_YET)
             return
         text, kb = await _render(session, user, page)
@@ -152,6 +171,10 @@ async def show_job_panel(message: Message) -> None:
 
 async def show_market_panel(message: Message) -> None:
     await _open_panel(message, PAGE_MARKET)
+
+
+async def show_warehouse_panel(message: Message) -> None:
+    await _open_panel(message, PAGE_WAREHOUSE)
 
 
 # ---------------------------------------------------------------------------
@@ -271,6 +294,9 @@ async def on_job_callback(callback: CallbackQuery, event_update: Update) -> None
             elif action == "market" and user.job_key is not None:
                 page = PAGE_MARKET
 
+            elif action == "wh" and user.job_key is not None:
+                page = PAGE_WAREHOUSE
+
             elif action == "buy" and user.job_key is not None and len(args) == 2 and args[1].isdigit():
                 page = PAGE_MARKET
                 qty = int(args[1])
@@ -283,7 +309,7 @@ async def on_job_callback(callback: CallbackQuery, event_update: Update) -> None
                         toast = jt.insufficient_toman(out.detail)
 
             elif action == "sell" and user.job_key is not None:
-                page = PAGE_MARKET
+                page = PAGE_WAREHOUSE if args[:1] == ["wh"] else PAGE_MARKET
                 out = await js.sell_all_products(session, user)
                 toast = jt.sold(out.detail) if out.result == JobResult.SUCCESS else jt.NOTHING_TO_SELL
 

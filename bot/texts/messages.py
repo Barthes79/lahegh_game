@@ -708,6 +708,7 @@ def dua_queue_active_panel_text(
     responders: list[tuple[int, str | None]] | None = None,
     owner_earned: int = 0,
     remaining_seconds: int = 0,
+    dhikr_text: str | None = None,
 ) -> str:
     """پیامی که وقتی صاحبِ پنل باز دوباره «التماس دعا» می‌زند نمایش داده می‌شود (HTML)."""
     lines = [
@@ -730,8 +731,12 @@ def dua_queue_active_panel_text(
     else:
         left = f"{to_persian_digits(minutes)} دقیقه"
     lines.append(f"⏳ حدود {left} دیگه بازه.")
-    lines.append("")
-    lines.append("برای پاسخ‌گرفتن، ذکرِ داخل پیام پنل (همین پیامی که ریپلای شده) استفاده میشه.")
+    if dhikr_text is not None:
+        lines.append("")
+        lines.append("۱) ذکر زیر رو کپی کن (روی متنش بزن)")
+        lines.append("۲) روی همین پیام ریپلای بزن و ذکر رو بفرست")
+        lines.append("")
+        lines.append(f"<code>{escape(dhikr_text)}</code>")
     return "\n".join(lines)
 
 

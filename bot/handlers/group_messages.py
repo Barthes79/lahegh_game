@@ -37,6 +37,7 @@ from bot.domain.milestones import (
     COMMAND_JOB,
     COMMAND_JOB_ALIAS,
     COMMAND_MARKET,
+    COMMAND_STORE,
     COMMAND_NAMEH_AMAL,
     COMMAND_TASBIH,
     COMMAND_WAREHOUSE,
@@ -151,7 +152,13 @@ async def handle_text_message(
     if normalized == "ریست شغل":
         from sqlalchemy import delete
 
-        from bot.database.models import UserProduct, UserProduction, UserRawMaterial
+        from bot.database.models import (
+            MarketListing,
+            MarketPricePrompt,
+            UserProduct,
+            UserProduction,
+            UserRawMaterial,
+        )
 
         async with async_session_factory() as session:
             async with session.begin():
@@ -161,8 +168,9 @@ async def handle_text_message(
                     message.from_user.username,
                     message.from_user.first_name,
                 )
-                for model in (UserProduction, UserRawMaterial, UserProduct):
+                for model in (UserProduction, UserRawMaterial, UserProduct, MarketPricePrompt):
                     await session.execute(delete(model).where(model.user_id == user.id))
+                await session.execute(delete(MarketListing).where(MarketListing.seller_id == user.id))
                 user.job_key = None
                 user.job_selected_at = None
                 user.tool_level = 0
@@ -227,10 +235,10 @@ async def handle_text_message(
         await show_warehouse_panel(message)
         return
 
-    if normalized == COMMAND_MARKET:
-        from bot.handlers.job_panel import show_market_panel
+    if normalized in (COMMAND_STORE, COMMAND_MARKET):
+        from bot.handlers.store_panel import show_store_panel
 
-        await show_market_panel(message)
+        await show_store_panel(message)
         return
 
     if normalized == COMMAND_DUA_QUEUE:
@@ -248,6 +256,13 @@ async def handle_text_message(
     # -----------------------------------------------------------------------
     # Level 2: پاسخ به پنل «التماس دعا» (ریپلای روی پیام پنل با متن ذکر آن)
     # -----------------------------------------------------------------------
+
+    # Level 3: ورود قیمت آگهی فروشگاه (ریپلای روی پیام پنل؛ در گروه و PV)
+    if message.reply_to_message is not None:
+        from bot.handlers.store_panel import try_handle_price_reply
+
+        if await try_handle_price_reply(message, event_update):
+            return
 
     if message.reply_to_message is not None and _chat_allows_activity(message.chat.type):
         from bot.handlers.dua_queue import try_handle_dua_queue_reply

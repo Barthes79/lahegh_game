@@ -42,6 +42,18 @@ SALAWAT_PROGRESS_STEP = 1
 LEVEL_1_REQUIRED_SALAWAT = 12
 # Level 2 starts with the 13th salawat; its progress is displayed as 1/24.
 LEVEL_2_REQUIRED_SALAWAT = 24
+# Level 3 starts with the salawat that follows 24/24 of level 2; it is displayed as 1/N.
+# [PLACEHOLDER] تعداد صلوات لازم برای سطح ۳ در سند مشخص نشده.
+LEVEL_3_REQUIRED_SALAWAT = 36
+
+
+def get_level_required_salawat(level: int) -> int:
+    """تعداد صلوات لازم برای کامل شدن پیشرفت هر سطح (برای نوار پیشرفت)."""
+    if level >= 3:
+        return LEVEL_3_REQUIRED_SALAWAT
+    if level == 2:
+        return LEVEL_2_REQUIRED_SALAWAT
+    return LEVEL_1_REQUIRED_SALAWAT
 
 # مجموعه‌ی نرمال‌شده برای jlookup سریع و بدون ابهام
 _NORMALIZED_SET: set[str] = {normalize_text(v) for v in SALAWAT_VARIANTS}

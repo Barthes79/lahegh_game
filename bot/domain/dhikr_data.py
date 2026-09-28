@@ -22,6 +22,8 @@ class DhikrDefinition:
     canonical_texts: tuple[str, ...]  # متن(های) معتبر برای این ذکر
     noor_reward: int  # نور هر بار استفاده
     unlock_cost: int  # هزینه‌ی unlock (۰ یعنی رایگان/از ابتدا باز)
+    # کولداون اختصاصی این ذکر (ثانیه). None یعنی کولداون معمول بر اساس سطح تسبیح.
+    cooldown_seconds: int | None = None
 
 
 DHIKR_LIST: list[DhikrDefinition] = [
@@ -31,6 +33,7 @@ DHIKR_LIST: list[DhikrDefinition] = [
         canonical_texts=("الحمدلله",),
         noor_reward=5,
         unlock_cost=0,
+        cooldown_seconds=1,
     ),
     DhikrDefinition(
         key="la_ilaha_illallah",

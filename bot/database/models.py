@@ -89,6 +89,14 @@ class User(Base):
     circle_daily_dhikr_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     circle_daily_dhikr_started_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
+    # --- Level 3: مشاغل ---
+    # job_key کلید شغل انتخاب‌شده (bot/domain/jobs_data.py)؛ NULL یعنی هنوز شغلی انتخاب نشده.
+    # tool_level سطح ابزار شغل (۱ تا ۵)؛ toman موجودی تومانی برای خرید از مارکت.
+    job_key: Mapped[str | None] = mapped_column(String, nullable=True)
+    job_selected_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    tool_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    toman: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
     dhikr_unlocks: Mapped[list["DhikrUnlock"]] = relationship(back_populates="user")
     chests: Mapped[list["Chest"]] = relationship(back_populates="user")
     dua_queues: Mapped[list["DuaQueue"]] = relationship(
@@ -242,6 +250,46 @@ class DhikrCircleMember(Base):
 
     circle: Mapped["DhikrCircle"] = relationship(back_populates="members")
     user: Mapped["User"] = relationship(foreign_keys=[user_id])
+
+
+class UserRawMaterial(Base):
+    """موجودی مواد اولیه‌ی یک کاربر برای یک محصول (Level 3)."""
+
+    __tablename__ = "user_raw_materials"
+    __table_args__ = (UniqueConstraint("user_id", "product_key", name="uq_user_raw_user_product"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    product_key: Mapped[str] = mapped_column(String, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+
+class UserProduction(Base):
+    """تولید در جریان یک کاربر؛ با UNIQUE(user_id) فقط یک تولید هم‌زمان مجاز است (Level 3)."""
+
+    __tablename__ = "user_productions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    product_key: Mapped[str] = mapped_column(String, nullable=False)
+    dhikr_done: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    dhikr_required: Mapped[int] = mapped_column(Integer, nullable=False)
+    started_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
+class UserProduct(Base):
+    """انبار محصولات تولیدشده: تعداد به‌ازای (محصول، ستاره) (Level 3)."""
+
+    __tablename__ = "user_products"
+    __table_args__ = (
+        UniqueConstraint("user_id", "product_key", "stars", name="uq_user_products_user_key_stars"),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    product_key: Mapped[str] = mapped_column(String, nullable=False)
+    stars: Mapped[int] = mapped_column(Integer, nullable=False)
+    quantity: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class ProcessedUpdate(Base):

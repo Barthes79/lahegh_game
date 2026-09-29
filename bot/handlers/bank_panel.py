@@ -1,120 +1,291 @@
 """
-هندلر callbackهای پنل «بانک اذکار» (اصلاحات نهایی).
+هندلر پنل «بانک»: کارت به کارت، قرض‌الحسنه، بدهی‌ها، وام‌های درخواستی.
 
-هر پنل یک پیام مستقل است که owner_id (شناسه‌ی تلگرام کاربری که آن را باز کرده) در
-callback_data تمام دکمه‌هایش کدگذاری شده. این باعث می‌شود:
-- هر بار کاربر «بانک اذکار» را بفرستد، یک پنل کاملاً جدید و مستقل ساخته شود.
-- پنل‌های قبلی (برای همان یا کاربران دیگر) دست‌نخورده باقی بمانند.
-- فقط صاحب پنل بتواند با دکمه‌های آن پنل کار کند؛ کلیک هر کاربر دیگری کاملاً بی‌پاسخ
-  می‌ماند (حتی answer هم فراخوانی نمی‌شود).
+مثل پنل‌های شغل/فروشگاه: هر «بانک» یک پنل مستقل می‌سازد، owner_id داخل callback_data است
+و کلیک بقیه‌ی کاربران کاملاً بی‌پاسخ می‌ماند. ورودی متنی (شماره کارت+مبلغ / مبلغ وام) با
+ریپلای روی پیام پنل گرفته می‌شود (bot/database/models.py: BankPrompt).
 
-تمام navigation (صفحه‌ی اصلی <-> جزئیات) و تمام مراحل خرید (تأیید/لغو/موفقیت/خطا) با
-ویرایش همان یک پیام انجام می‌شود؛ هیچ‌وقت پیام جدیدی ساخته نمی‌شود.
+callback_data: bank:<action>:<owner_id>
+  home | transfer | loan | debts | pay:<loan_id> | requested | fund:<loan_id>
 """
 from __future__ import annotations
 
+import logging
+
 from aiogram import Router
-from aiogram.types import CallbackQuery, Update
+from aiogram.exceptions import TelegramBadRequest
+from aiogram.types import CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup, Message, Update
 
 from bot.database.engine import async_session_factory
-from bot.domain.dhikr_data import DHIKR_BY_KEY, DHIKR_LIST
-from bot.keyboards.inline import (
-    bank_azkar_back_keyboard,
-    bank_azkar_detail_keyboard,
-    bank_azkar_main_keyboard,
-)
+from bot.database.models import LoanRequest, User
+from bot.domain import bank_data as bd
+from bot.services import bank_service as bs
+from bot.services.bank_service import BankResult
 from bot.services.idempotency import try_claim_update
-from bot.services.unlock_service import UnlockResult, is_unlocked, unlock_dhikr
-from bot.services.user_service import get_or_create_user
-from bot.texts import messages as texts
+from bot.services.user_service import get_or_create_user, get_user_by_telegram_id
+from bot.texts import bank_texts as bt
+from bot.handlers.store_panel import parse_price  # پارسر عدد فارسی/کاما مشترک
+
+logger = logging.getLogger(__name__)
 
 router = Router(name="bank_panel")
 
 
-def _parse(data: str) -> tuple[str, int, str | None]:
-    parts = data.split(":")
-    action = parts[1]
-    owner_id = int(parts[2])
-    key = parts[3] if len(parts) > 3 else None
-    return action, owner_id, key
+def _btn(text: str, owner_id: int, action: str, *args: str) -> InlineKeyboardButton:
+    return InlineKeyboardButton(text=text, callback_data=":".join(["bank", action, str(owner_id), *args]))
 
 
-@router.callback_query(lambda c: c.data and c.data.startswith("bnk:"))
-async def on_bank_panel_callback(callback: CallbackQuery, event_update: Update) -> None:
+def _kb(rows: list[list[InlineKeyboardButton]]) -> InlineKeyboardMarkup:
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def _home_row(owner_id: int) -> list[InlineKeyboardButton]:
+    return [_btn("🔙 بانک", owner_id, "home")]
+
+
+# ---------------------------------------------------------------------------
+# صفحه‌ها
+# ---------------------------------------------------------------------------
+
+
+async def page_home(session, user: User):
+    o = user.telegram_id
+    card = await bs.ensure_card_number(session, user)
+    debts = await bs.get_my_debts(session, user)
+    rows = [
+        [_btn("💳 کارت به کارت", o, "transfer")],
+        [_btn("🤝 قرض‌الحسنه", o, "loan")],
+        [_btn(f"📄 بدهی‌ها ({len(debts)})", o, "debts")],
+        [_btn("📋 وام‌های درخواستی", o, "requested")],
+    ]
+    return bt.bank_home(user.toman, card, len(debts)), _kb(rows)
+
+
+async def page_transfer(session, user: User, chat_id: int, message_id: int):
+    o = user.telegram_id
+    await bs.set_prompt(session, user, "transfer", chat_id, message_id)
+    return bt.transfer_prompt_page(user.toman), _kb([_home_row(o)])
+
+
+async def page_loan(session, user: User, chat_id: int, message_id: int):
+    o = user.telegram_id
+    active = await bs.get_active_loan(session, user)
+    if active is not None:
+        return bt.loan_home_active(active), _kb([_home_row(o)])
+    await bs.set_prompt(session, user, "loan", chat_id, message_id)
+    return bt.loan_home_no_active(), _kb([_home_row(o)])
+
+
+async def page_debts(session, user: User):
+    o = user.telegram_id
+    debts = await bs.get_my_debts(session, user)
+    rows = [[_btn(f"💳 پرداخت {d.repay_amount:,}", o, "pay", str(d.id))] for d in debts]
+    rows.append(_home_row(o))
+    return bt.debts_page(user.toman, debts), _kb(rows)
+
+
+async def page_requested(session, user: User):
+    o = user.telegram_id
+    loans = await bs.list_open_loans(session, exclude_user_id=user.id)
+    rows = [
+        [_btn(f"🤝 پرداخت وام {l.amount:,} به {name[:12]}", o, "fund", str(l.id))]
+        for l, name in loans
+    ]
+    rows.append(_home_row(o))
+    return bt.requested_loans_page(loans, user.toman), _kb(rows)
+
+
+# ---------------------------------------------------------------------------
+# دستور متنی «بانک»
+# ---------------------------------------------------------------------------
+
+
+async def show_bank_panel(message: Message) -> None:
+    if message.from_user is None:
+        return
+    async with async_session_factory() as session:
+        async with session.begin():
+            user = await get_or_create_user(
+                session, message.from_user.id, message.from_user.username, message.from_user.first_name
+            )
+            text, kb = await page_home(session, user)
+    await message.reply(text, reply_markup=kb)
+
+
+# ---------------------------------------------------------------------------
+# ورود متنی با ریپلای (کارت‌به‌کارت / مبلغ وام)
+# ---------------------------------------------------------------------------
+
+
+async def try_handle_bank_reply(message: Message, event_update: Update) -> bool:
+    if message.reply_to_message is None or message.from_user is None or not message.text:
+        return False
+
+    notify: tuple[int, str] | None = None
+    handled = False
+    reply_text: str | None = None
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            user = await get_user_by_telegram_id(session, message.from_user.id)
+            if user is None:
+                return False
+            prompt = await bs.get_prompt(session, user)
+            if (
+                prompt is None
+                or prompt.chat_id != message.chat.id
+                or prompt.message_id != message.reply_to_message.message_id
+            ):
+                return False
+
+            if not await try_claim_update(session, event_update.update_id):
+                return True
+            handled = True
+
+            if prompt.kind == "transfer":
+                parts = message.text.split()
+                amount = parse_price(parts[-1]) if len(parts) >= 2 else None
+                card_raw = " ".join(parts[:-1]) if len(parts) >= 2 else ""
+                digits = bd.normalize_card_number(card_raw) if card_raw else None
+                if digits is None or amount is None:
+                    reply_text = bt.TRANSFER_BAD_FORMAT
+                else:
+                    out = await bs.transfer_by_card(session, user, digits, amount)
+                    if out.result == BankResult.SUCCESS:
+                        await bs.clear_prompt(session, user)
+                        reply_text = bt.transfer_success(out.detail)
+                        name = message.from_user.first_name or message.from_user.username or "یک کاربر"
+                        notify = (out.other_telegram_id, bt.transfer_received_notice(name, out.detail))
+                    elif out.result == BankResult.CARD_NOT_FOUND:
+                        reply_text = bt.TRANSFER_CARD_NOT_FOUND
+                    elif out.result == BankResult.SELF_TRANSFER:
+                        reply_text = bt.TRANSFER_SELF
+                    elif out.result == BankResult.INSUFFICIENT_FUNDS:
+                        reply_text = bt.transfer_insufficient(out.detail)
+                    else:
+                        reply_text = bt.TRANSFER_BAD_FORMAT
+
+            elif prompt.kind == "loan":
+                amount = parse_price(message.text)
+                if amount is None:
+                    reply_text = bt.LOAN_NOT_A_NUMBER
+                else:
+                    out = await bs.request_loan(session, user, amount)
+                    if out.result == BankResult.SUCCESS:
+                        await bs.clear_prompt(session, user)
+                        reply_text = bt.loan_requested(amount)
+                    elif out.result == BankResult.AMOUNT_TOO_LOW:
+                        reply_text = bt.loan_amount_too_low(out.detail)
+                    elif out.result == BankResult.AMOUNT_TOO_HIGH:
+                        reply_text = bt.loan_amount_too_high(out.detail)
+                    else:
+                        await bs.clear_prompt(session, user)
+                        reply_text = bt.ALREADY_HAS_LOAN
+
+    if handled and reply_text:
+        await message.reply(reply_text)
+    if notify is not None and notify[0]:
+        try:
+            await message.bot.send_message(chat_id=notify[0], text=notify[1])
+        except Exception:  # noqa: BLE001
+            logger.debug("اطلاع‌رسانی واریز به گیرنده ناموفق بود", exc_info=True)
+    return handled
+
+
+# ---------------------------------------------------------------------------
+# callbackها
+# ---------------------------------------------------------------------------
+
+
+async def _edit(callback: CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
+    try:
+        await callback.message.edit_text(text, reply_markup=kb)
+    except TelegramBadRequest as exc:
+        logger.debug("edit_text ignored: %s", exc)
+
+
+@router.callback_query(lambda c: c.data and c.data.startswith("bank:"))
+async def on_bank_callback(callback: CallbackQuery, event_update: Update) -> None:
     if callback.data is None or callback.from_user is None or callback.message is None:
         return
-
-    action, owner_id, key = _parse(callback.data)
-
-    # فقط صاحب پنل — کلیک بقیه کاملاً بدون پاسخ (نه answer، نه edit)
+    parts = callback.data.split(":")
+    if len(parts) < 3 or not parts[2].lstrip("-").isdigit():
+        return
+    action, owner_id, args = parts[1], int(parts[2]), parts[3:]
     if callback.from_user.id != owner_id:
         return
 
-    if action == "main":
-        async with async_session_factory() as session:
+    notify: tuple[int, str] | None = None
+    toast: str | None = None
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            if not await try_claim_update(session, event_update.update_id):
+                await callback.answer()
+                return
             user = await get_or_create_user(
                 session, owner_id, callback.from_user.username, callback.from_user.first_name
             )
-            unlocked_map = {d.key: await is_unlocked(session, user, d) for d in DHIKR_LIST}
-        await callback.message.edit_caption(
-            caption=texts.bank_azkar_panel_header(),
-            reply_markup=bank_azkar_main_keyboard(owner_id, DHIKR_LIST, unlocked_map),
-            parse_mode="Markdown",
-        )
-        await callback.answer()
-        return
 
-    dhikr = DHIKR_BY_KEY.get(key) if key else None
-    if dhikr is None:
-        await callback.answer()
-        return
+            page = None
+            chat_id, message_id = callback.message.chat.id, callback.message.message_id
 
-    if action == "view":
-        async with async_session_factory() as session:
-            user = await get_or_create_user(
-                session, owner_id, callback.from_user.username, callback.from_user.first_name
-            )
-            unlocked = await is_unlocked(session, user, dhikr)
-        text = texts.bank_azkar_detail_unlocked(dhikr) if unlocked else texts.bank_azkar_detail_locked(dhikr)
-        await callback.message.edit_caption(
-            caption=text,
-            reply_markup=bank_azkar_detail_keyboard(owner_id, dhikr.key, unlocked),
-            parse_mode="Markdown",
-        )
-        await callback.answer()
-        return
+            if action == "home":
+                await bs.clear_prompt(session, user)
+                page = await page_home(session, user)
 
-    if action == "buy":
-        async with async_session_factory() as session:
-            async with session.begin():
-                claimed = await try_claim_update(session, event_update.update_id)
-                if not claimed:
-                    await callback.answer()
-                    return
-                user = await get_or_create_user(
-                    session, owner_id, callback.from_user.username, callback.from_user.first_name
-                )
-                outcome = await unlock_dhikr(session, user, dhikr)
+            elif action == "transfer":
+                page = await page_transfer(session, user, chat_id, message_id)
 
-        await callback.answer()
-        if outcome.result == UnlockResult.SUCCESS:
-            await callback.message.edit_caption(
-                caption=texts.bank_azkar_purchase_success(dhikr),
-                reply_markup=bank_azkar_back_keyboard(owner_id),
-                parse_mode="Markdown",
-            )
-        elif outcome.result == UnlockResult.ALREADY_UNLOCKED:
-            await callback.message.edit_caption(
-                caption=texts.bank_azkar_detail_unlocked(dhikr),
-                reply_markup=bank_azkar_detail_keyboard(owner_id, dhikr.key, True),
-                parse_mode="Markdown",
-            )
-        else:
-            await callback.message.edit_caption(
-                caption=texts.bank_azkar_purchase_insufficient(dhikr, outcome.noor_current),
-                reply_markup=bank_azkar_back_keyboard(owner_id),
-                parse_mode="Markdown",
-            )
-        return
+            elif action == "loan":
+                page = await page_loan(session, user, chat_id, message_id)
 
-    await callback.answer()
+            elif action == "debts":
+                page = await page_debts(session, user)
+
+            elif action == "pay" and args and args[0].isdigit():
+                out = await bs.repay_loan(session, user, int(args[0]))
+                if out.result == BankResult.SUCCESS:
+                    toast = bt.repay_success(out.detail)
+                    if out.other_telegram_id:
+                        name = callback.from_user.first_name or callback.from_user.username or "یک کاربر"
+                        notify = (out.other_telegram_id, bt.repay_notice_to_lender(name, out.detail))
+                elif out.result == BankResult.INSUFFICIENT_FUNDS:
+                    toast = bt.insufficient_funds(out.detail)
+                else:
+                    toast = bt.LOAN_GONE
+                page = await page_debts(session, user)
+
+            elif action == "requested":
+                page = await page_requested(session, user)
+
+            elif action == "fund" and args and args[0].isdigit():
+                loan_id = int(args[0])
+                loan_before = await session.get(LoanRequest, loan_id)
+                noor_reward = loan_before.lender_noor_reward if loan_before else 0
+                out = await bs.fund_loan(session, user, loan_id)
+                if out.result == BankResult.SUCCESS:
+                    toast = bt.fund_success(out.detail, noor_reward)
+                    if out.other_telegram_id:
+                        name = callback.from_user.first_name or callback.from_user.username or "یک کاربر"
+                        notify = (out.other_telegram_id, bt.fund_notice_to_borrower(name, out.detail))
+                elif out.result == BankResult.INSUFFICIENT_FUNDS:
+                    toast = bt.insufficient_funds(out.detail)
+                elif out.result == BankResult.OWN_LOAN:
+                    toast = "این وام خودته."
+                else:
+                    toast = bt.LOAN_GONE
+                page = await page_requested(session, user)
+
+            if page is None:
+                page = await page_home(session, user)
+            text, kb = page
+
+    await callback.answer(toast, show_alert=bool(toast) and len(toast) > 60)
+    await _edit(callback, text, kb)
+
+    if notify is not None and notify[0]:
+        try:
+            await callback.bot.send_message(chat_id=notify[0], text=notify[1])
+        except Exception:  # noqa: BLE001
+            logger.debug("اطلاع‌رسانی بانک ناموفق بود", exc_info=True)

@@ -97,6 +97,12 @@ class User(Base):
     tool_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     toman: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
+    # --- Level 3: بانک ---
+    # card_number اولین‌باری که کاربر پنل «بانک» را باز کند ساخته می‌شود (NULL تا آن لحظه).
+    # jail_until یعنی کاربر تا این زمان در زندان است و صلوات/ذکرش ثبت نمی‌شود (NULL = آزاد).
+    card_number: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)
+    jail_until: Mapped[datetime | None] = mapped_column(nullable=True)
+
     dhikr_unlocks: Mapped[list["DhikrUnlock"]] = relationship(back_populates="user")
     chests: Mapped[list["Chest"]] = relationship(back_populates="user")
     dua_queues: Mapped[list["DuaQueue"]] = relationship(
@@ -319,6 +325,38 @@ class MarketPricePrompt(Base):
     chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
     created_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
+class BankPrompt(Base):
+    """درخواست ورود متنیِ در انتظار برای بانک: کاربر باید روی پیام پنل ریپلای کند."""
+
+    __tablename__ = "bank_prompts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, unique=True)
+    kind: Mapped[str] = mapped_column(String, nullable=False)  # 'transfer' | 'loan'
+    chat_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    message_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    created_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
+class LoanRequest(Base):
+    """درخواست قرض‌الحسنه‌ی یک کاربر و وضعیت بازپرداخت آن."""
+
+    __tablename__ = "loan_requests"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    borrower_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
+    amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    repay_amount: Mapped[int] = mapped_column(Integer, nullable=False)
+    lender_noor_reward: Mapped[int] = mapped_column(Integer, nullable=False)
+    status: Mapped[str] = mapped_column(String, nullable=False, default="pending")
+    lender_id: Mapped[int | None] = mapped_column(ForeignKey("users.id"), nullable=True)
+    requested_at: Mapped[datetime] = mapped_column(nullable=False)
+    funded_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    due_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    repaid_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    last_penalty_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
 
 class ProcessedUpdate(Base):

@@ -59,6 +59,7 @@ class OutcomeStatus:
     LOCKED_DHIKR = "locked_dhikr"
     COOLDOWN = "cooldown"
     CIRCLE_DAILY_LIMIT = "circle_daily_limit"
+    JAILED = "jailed"
     SUCCESS = "success"
 
 
@@ -69,6 +70,7 @@ class ActivityOutcome:
     dhikr_def: DhikrDefinition | None = None
 
     cooldown_remaining_seconds: int | None = None
+    jail_remaining_seconds: int = 0  # فقط وقتی status == JAILED
 
     # cooldown کامل (ثانیه) تا فعالیت بعدی از همین نوع، بلافاصله بعد از یک ثبت موفق —
     # برای خط «⏳ صلوات/ذکر بعدی» در پیام موفقیت عادی استفاده می‌شود.
@@ -156,6 +158,14 @@ async def process_activity(
         return ActivityOutcome(status=OutcomeStatus.UNRELATED)
 
     user = await get_or_create_user(session, telegram_id, username, first_name)
+
+    # Level 3 — بانک: مادامی که کاربر به‌خاطر ندادن بدهی در زندان است، صلوات/ذکرش
+    # (چه عادی چه حلقه) ثبت نمی‌شود؛ بدون هیچ اثری روی cooldown یا سهمیه‌ها.
+    from bot.services.bank_service import jail_remaining_seconds as _jail_remaining
+
+    remaining = _jail_remaining(user, now)
+    if remaining > 0:
+        return ActivityOutcome(status=OutcomeStatus.JAILED, jail_remaining_seconds=remaining)
 
     # حلقه ذکر یک قابلیت مستقلِ Level 2 است. طبق قوانین حلقه، داشتن Level 2
     # برای ثبت ذکر حلقه کافی است و نباید وابسته به game_started باشد.

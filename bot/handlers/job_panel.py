@@ -250,15 +250,18 @@ async def on_job_callback(callback: CallbackQuery, event_update: Update) -> None
                     toast = jt.TOOL_MAX_FOR_LEVEL
 
             elif action == "prod" and user.job_key is not None:
-                job = jd.JOB_BY_KEY[user.job_key]
-                stock = await js.get_raw_stock(session, user)
-                text = jt.produce_choose_page(job, user.level, stock)
-                rows = [
-                    [_btn(f"{p.emoji} {p.name}", owner_id, "prod_go", p.key)]
-                    for p in jd.unlocked_products(job, user.level)
-                ]
-                rows.append(_back_row(owner_id))
-                kb = _kb(rows)
+                if await js.get_active_production(session, user) is not None:
+                    toast = jt.ALREADY_PRODUCING
+                else:
+                    job = jd.JOB_BY_KEY[user.job_key]
+                    stock = await js.get_raw_stock(session, user)
+                    text = jt.produce_choose_page(job, user.level, stock)
+                    rows = [
+                        [_btn(f"{p.emoji} {p.name}", owner_id, "prod_go", p.key)]
+                        for p in jd.unlocked_products(job, user.level)
+                    ]
+                    rows.append(_back_row(owner_id))
+                    kb = _kb(rows)
 
             elif action == "prod_go" and user.job_key is not None and args:
                 out = await js.start_production(session, user, args[0])

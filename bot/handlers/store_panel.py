@@ -81,10 +81,15 @@ async def page_home(session, user: User):
 async def page_raw(session, user: User):
     o = user.telegram_id
     job = jd.JOB_BY_KEY[user.job_key]
+    unlocked = jd.unlocked_products(job, user.level)
+    if not unlocked:
+        # نباید پیش بیاید (انتخاب شغل حداقل سطح ۳ می‌خواهد)، ولی اگر داده‌ی کاربر ناسازگار
+        # شد (مثلاً افت دیتابیس)، حداقل یک راه برای دیدن وضعیت و رفتن به عقب بماند.
+        logger.warning("کاربر %s شغل دارد ولی هیچ محصولی در سطح %s باز نیست", o, user.level)
     text = tt.raw_page(job, user.level, user.toman, await js.get_raw_stock(session, user))
     rows = [
         [_btn(f"{p.emoji} خرید ۱", o, "rbuy", p.key, "1"), _btn(f"{p.emoji} خرید ۵", o, "rbuy", p.key, "5")]
-        for p in jd.unlocked_products(job, user.level)
+        for p in unlocked
     ]
     rows.append(_home_btn(o))
     return text, _kb(rows)
@@ -250,7 +255,15 @@ async def _edit(callback: CallbackQuery, text: str, kb: InlineKeyboardMarkup) ->
     try:
         await callback.message.edit_text(text, reply_markup=kb)
     except TelegramBadRequest as exc:
-        logger.debug("edit_text ignored: %s", exc)
+        if "message is not modified" in str(exc).lower():
+            return
+        # ویرایش شکست خورده (مثلاً پیام خیلی قدیمی/حذف‌شده)؛ به‌جای رها کردن کاربر با
+        # پنلی که دیگر قابل تعامل نیست، همان صفحه را به‌صورت پیام تازه می‌فرستیم.
+        logger.warning("edit_text failed, sending new message instead: %s", exc)
+        try:
+            await callback.message.answer(text, reply_markup=kb)
+        except Exception:  # noqa: BLE001
+            logger.exception("ارسال پیام جایگزین هم ناموفق بود")
 
 
 def _valid_item(key: str, stars_s: str) -> int | None:

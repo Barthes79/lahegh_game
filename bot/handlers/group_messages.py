@@ -38,6 +38,7 @@ from bot.domain.milestones import (
     COMMAND_JOB_ALIAS,
     COMMAND_MARKET,
     COMMAND_STORE,
+    COMMAND_BANK,
     COMMAND_NAMEH_AMAL,
     COMMAND_TASBIH,
     COMMAND_WAREHOUSE,
@@ -241,6 +242,12 @@ async def handle_text_message(
         await show_store_panel(message)
         return
 
+    if normalized == COMMAND_BANK:
+        from bot.handlers.bank_panel import show_bank_panel
+
+        await show_bank_panel(message)
+        return
+
     if normalized == COMMAND_DUA_QUEUE:
         from bot.handlers.dua_queue import create_dua_queue_command
 
@@ -262,6 +269,13 @@ async def handle_text_message(
         from bot.handlers.store_panel import try_handle_price_reply
 
         if await try_handle_price_reply(message, event_update):
+            return
+
+    # Level 3: ورود متن بانک — کارت‌به‌کارت / مبلغ وام (ریپلای روی پیام پنل؛ در گروه و PV)
+    if message.reply_to_message is not None:
+        from bot.handlers.bank_panel import try_handle_bank_reply
+
+        if await try_handle_bank_reply(message, event_update):
             return
 
     if message.reply_to_message is not None and _chat_allows_activity(message.chat.type):
@@ -318,6 +332,16 @@ async def _render_outcome(
         OutcomeStatus.INVALID_SILENT,
         OutcomeStatus.CIRCLE_DAILY_LIMIT,
     ):
+        return
+
+    # -----------------------------------------------------------------------
+    # Level 3: کاربر به‌خاطر ندادن بدهی در زندان است
+    # -----------------------------------------------------------------------
+
+    if status == OutcomeStatus.JAILED:
+        from bot.texts import bank_texts as bank_texts_mod
+
+        await message.reply(bank_texts_mod.jailed_message(outcome.jail_remaining_seconds))
         return
 
     # -----------------------------------------------------------------------

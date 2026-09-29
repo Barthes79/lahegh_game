@@ -323,6 +323,53 @@ async def main() -> None:
     out = await act(7001, DHIKR)
     check(out.status == OutcomeStatus.SUCCESS and out.production is None, "بدون شغل ذکر عادی مثل قبل کار می‌کند")
 
+    print("\n== دوبار زدن «شروع تولید» بدون مصرف بذر اضافه ==")
+    from bot.handlers.job_panel import on_job_callback as _job_cb
+    from unittest.mock import AsyncMock, MagicMock
+    from bot.texts import job_texts as jt
+
+    def _cb(data, user_id, mid=42):
+        c = MagicMock()
+        c.data = data
+        c.from_user.id = user_id
+        c.from_user.username = "a"
+        c.from_user.first_name = "A"
+        c.message.chat.id = -5
+        c.message.message_id = mid
+        c.message.edit_text = AsyncMock()
+        c.answer = AsyncMock()
+        return c
+
+    DBL = 9500
+
+    async def _prep_dbl(s, user):
+        user.level = 3
+        user.noor_current = 5000
+        await js.choose_job(s, user, "farmer")
+        await js.buy_raw_material(s, user, "farmer_potato", 2)
+    await with_user(DBL, _prep_dbl)
+
+    upd_counter = [70000]
+
+    def _upd():
+        upd_counter[0] += 1
+        return MagicMock(update_id=upd_counter[0])
+
+    c1 = _cb(f"job:prod_go:{DBL}:farmer_potato", DBL)
+    await _job_cb(c1, _upd())
+    stock_after_first = await with_user(DBL, lambda s, u: js.get_raw_stock(s, u))
+    check(stock_after_first.get("farmer_potato") == 1, "بعد از شروع تولید اول، ۱ بذر باقی می‌ماند")
+
+    c2 = _cb(f"job:prod_go:{DBL}:farmer_potato", DBL)
+    await _job_cb(c2, _upd())
+    stock_after_second = await with_user(DBL, lambda s, u: js.get_raw_stock(s, u))
+    check(stock_after_second.get("farmer_potato") == 1, "کلیک دوباره روی «شروع تولید» بذر اضافه مصرف نمی‌کند")
+    check(c2.answer.await_args.args[0] == jt.ALREADY_PRODUCING, "کلیک دوم پیام «در حال تولید» می‌دهد")
+
+    c3 = _cb(f"job:prod:{DBL}", DBL)
+    await _job_cb(c3, _upd())
+    check(c3.answer.await_args.args[0] == jt.ALREADY_PRODUCING, "منوی «شروع تولید» هم وقتی تولید فعاله باز نمی‌شود")
+
     print("\n== رندر پنل‌ها ==")
     from bot.handlers.job_panel import build_main_page
     from bot.handlers import store_panel as sp

@@ -159,8 +159,14 @@ async def show_warehouse_panel(message: Message) -> None:
 async def _edit(callback: CallbackQuery, text: str, kb: InlineKeyboardMarkup) -> None:
     try:
         await callback.message.edit_text(text, reply_markup=kb)
-    except TelegramBadRequest as exc:  # مثلاً «message is not modified»
-        logger.debug("edit_text ignored: %s", exc)
+    except TelegramBadRequest as exc:
+        if "message is not modified" in str(exc).lower():
+            return
+        logger.warning("edit_text failed, sending new message instead: %s", exc)
+        try:
+            await callback.message.answer(text, reply_markup=kb)
+        except Exception:  # noqa: BLE001
+            logger.exception("ارسال پیام جایگزین هم ناموفق بود")
 
 
 @router.callback_query(lambda c: c.data and c.data.startswith("job:"))

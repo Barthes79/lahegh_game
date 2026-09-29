@@ -51,7 +51,11 @@ def raw_page(job: JobDef, user_level: int, toman: int, raw_stock: dict[str, int]
         f"💰 {_money(toman)}",
         "",
     ]
-    for p in jd.unlocked_products(job, user_level):
+    unlocked = jd.unlocked_products(job, user_level)
+    if not unlocked:
+        # حالت غیرعادی: یعنی سطح کاربر با شغلش هم‌خوانی ندارد (مثلاً بعد از افت داده‌ها).
+        lines.append("⚠️ الان محصولی برای این شغل در سطح تو باز نیست. با «نامه اعمالم» سطحت را چک کن.")
+    for p in unlocked:
         lines.append(
             f"  {p.emoji} {job.raw_name} {p.name} — {_money(p.raw_price)}"
             f" (موجود: {_n(raw_stock.get(p.key, 0))})"

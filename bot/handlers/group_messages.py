@@ -81,6 +81,77 @@ def _chat_allows_activity(chat_type: str) -> bool:
 
 
 # ---------------------------------------------------------------------------
+# میان‌بر تست سطح‌ها (موقت)
+# ---------------------------------------------------------------------------
+
+_DIGIT_TRANSLATION = str.maketrans("۰۱۲۳۴۵۶۷۸۹٠١٢٣٤٥٦٧٨٩", "01234567890123456789")
+
+
+def _parse_test_level_command(normalized: str) -> int | None:
+    """«سطح 1» / «سطح ۲» / «سطح 3» -> عدد سطح؛ در غیر این صورت None."""
+    text = normalized.translate(_DIGIT_TRANSLATION)
+    if text in ("سطح 1", "سطح 2", "سطح 3"):
+        return int(text.split()[1])
+    return None
+
+
+def _apply_test_level(user, level: int) -> None:
+    """
+    کاربر را برای تست مستقیم وارد یک سطح می‌کند، با وضعیتی که در بازی واقعی هم
+    در ابتدای همان سطح دیده می‌شد:
+
+    - سطح ۱: شروع تازه‌ی سطح ۱ (پیشرفت ۱/۱۲)؛ قابلیت‌های سطح ۱ (بانک اذکار، نامه اعمال،
+      تسبیح) قفل می‌شوند تا milestoneهای ۳/۶/۹ دوباره قابل تست باشند.
+    - سطح ۲: پیشرفت ۱/۲۴؛ قابلیت‌های سطح ۱ باز هستند (چون کاربر واقعی از سطح ۱ گذشته).
+    - سطح ۳: پیشرفت ۱/۳۶؛ قابلیت‌های سطح ۱ باز و نور برای تست شغل/ابزار حداقل ۵۰۰۰.
+
+    نور، شغل، تومان و بقیه‌ی داده‌ها دست‌نخورده می‌مانند (به‌جز نور در سطح ۳).
+    """
+    from datetime import datetime, timezone
+
+    # بدون این، اولین صلوات کاربر «اولین فعالیت» حساب می‌شود و سطح را به ۱ برمی‌گرداند.
+    if not user.game_started:
+        user.game_started = True
+    if user.game_started_at is None:
+        user.game_started_at = datetime.now(timezone.utc)
+
+    user.level = level
+    user.level_progress = 1
+
+    if level == 1:
+        # صلوات ۱ سطح ۱ ثبت شده فرض می‌شود؛ صلوات سیزدهم دوباره به سطح ۲ می‌برد.
+        user.salawat_count = 1
+        user.bank_azkar_unlocked = False
+        user.nameh_amal_unlocked = False
+        user.tasbih_unlocked = False
+        user.tasbih_level = 0
+        return
+
+    # سطح ۲ و ۳: قابلیت‌های سطح ۱ باز هستند.
+    user.bank_azkar_unlocked = True
+    user.nameh_amal_unlocked = True
+    user.tasbih_unlocked = True
+    if user.tasbih_level < 1:
+        user.tasbih_level = 1
+
+    if level == 2:
+        # صلوات سیزدهم اولین صلوات سطح ۲ است.
+        user.salawat_count = 13
+    elif level == 3:
+        # برای تست شغل/ابزار: اگر نور کم بود تا ۵۰۰۰ پر می‌شود.
+        if user.noor_current < 5000:
+            user.noor_current = 5000
+
+
+def _test_level_reply(level: int) -> str:
+    if level == 1:
+        return "✅ برای تست، وارد سطح ۱ شدی. پیشرفت سطح: ۱/۱۲\nقابلیت‌های سطح ۱ دوباره قفل شدند."
+    if level == 2:
+        return "✅ برای تست، وارد سطح ۲ شدی. پیشرفت سطح: ۱/۲۴"
+    return "✅ برای تست، وارد سطح ۳ شدی و نورت ۵۰۰۰ شد. بنویس: «شغل»"
+
+
+# ---------------------------------------------------------------------------
 # هندلر اصلی پیام‌های متنی
 # ---------------------------------------------------------------------------
 
@@ -107,9 +178,11 @@ async def handle_text_message(
     normalized = normalize_text(message.text)
 
     # -----------------------------------------------------------------------
-    # تست سریع Level 2
+    # تست سریع سطح‌ها: «سطح 1» / «سطح 2» / «سطح 3» (موقت؛ قبل از انتشار نهایی حذف شود)
+    # اعداد فارسی/عربی هم پذیرفته می‌شوند («سطح ۲»).
     # -----------------------------------------------------------------------
-    if normalized == "سطح 2":
+    test_level = _parse_test_level_command(normalized)
+    if test_level is not None:
         async with async_session_factory() as session:
             async with session.begin():
                 user = await get_or_create_user(
@@ -118,31 +191,9 @@ async def handle_text_message(
                     message.from_user.username,
                     message.from_user.first_name,
                 )
-                user.level = 2
-                user.level_progress = 1
+                _apply_test_level(user, test_level)
                 await session.flush()
-        await message.reply("✅ برای تست، وارد سطح ۲ شدی. پیشرفت سطح: ۱/۲۴")
-        return
-
-    # -----------------------------------------------------------------------
-    # تست سریع Level 3 (موقت؛ قبل از انتشار نهایی حذف شود)
-    # -----------------------------------------------------------------------
-    if normalized == "سطح 3":
-        async with async_session_factory() as session:
-            async with session.begin():
-                user = await get_or_create_user(
-                    session,
-                    message.from_user.id,
-                    message.from_user.username,
-                    message.from_user.first_name,
-                )
-                user.level = 3
-                user.level_progress = 1
-                # برای تست شغل/ابزار: اگر نور کم بود تا ۵۰۰۰ پر می‌شود.
-                if user.noor_current < 5000:
-                    user.noor_current = 5000
-                await session.flush()
-        await message.reply("✅ برای تست، وارد سطح ۳ شدی و نورت ۵۰۰۰ شد. بنویس: «شغل»")
+        await message.reply(_test_level_reply(test_level))
         return
 
     # -----------------------------------------------------------------------

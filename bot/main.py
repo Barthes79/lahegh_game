@@ -39,7 +39,6 @@ async def main() -> None:
     # ترتیب مهم است: دستورات ثابت بازی قبل از catch-all پیام‌های بازی ثبت شوند
     dp.include_router(commands.router)
     dp.include_router(callbacks.router)
-    dp.include_router(bank_panel.router)
     dp.include_router(tasbih_panel.router)
     dp.include_router(dua_queue.router)
     dp.include_router(dhikr_circle.router)

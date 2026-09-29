@@ -18,7 +18,9 @@ from aiogram.types import InlineKeyboardMarkup
 from bot.config import settings
 from bot.database.engine import async_session_factory
 from bot.domain import dua_queue as dua_queue_domain
+from bot.services.bank_service import apply_due_penalties
 from bot.services.dua_queue_service import close_expired_queues, get_panel_view
+from bot.texts import bank_texts
 from bot.handlers.dhikr_circle import expire_circle_panels
 from bot.services.reminder_service import build_user_mention, get_users_due_for_reminder, mark_reminded
 from bot.texts import messages as texts
@@ -85,6 +87,23 @@ async def _close_expired_dua_queues_once(bot: Bot) -> None:
             logger.debug("edit پنل صف دعای منقضی‌شده ناموفق بود (chat=%s, message=%s)", chat_id, message_id)
 
 
+async def _apply_loan_penalties_once(bot: Bot) -> None:
+    """Level 3 — بانک: هر ۲۴ ساعتِ سررسیدگذشته یک‌بار جریمه‌ی بدهیِ پرداخت‌نشده."""
+    notices: list[tuple[int, str]] = []
+    async with async_session_factory() as session:
+        async with session.begin():
+            for penalty in await apply_due_penalties(session):
+                if penalty.user.active_chat_id:
+                    notices.append(
+                        (penalty.user.active_chat_id, bank_texts.penalty_notice(penalty.kind, penalty.detail))
+                    )
+    for chat_id, text in notices:
+        try:
+            await bot.send_message(chat_id=chat_id, text=text)
+        except Exception:  # noqa: BLE001
+            logger.exception("اطلاع‌رسانی جریمه‌ی بدهی ناموفق بود")
+
+
 async def reminder_loop(bot: Bot) -> None:
     interval = settings.reminder_check_interval_minutes * 60
     while True:
@@ -97,4 +116,8 @@ async def reminder_loop(bot: Bot) -> None:
             await expire_circle_panels(bot)
         except Exception:  # noqa: BLE001
             logger.exception("خطا در بستن خودکار صف‌های دعای منقضی")
+        try:
+            await _apply_loan_penalties_once(bot)
+        except Exception:  # noqa: BLE001
+            logger.exception("خطا در اعمال جریمه‌ی بدهی")
         await asyncio.sleep(interval)

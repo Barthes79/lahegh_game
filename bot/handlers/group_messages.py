@@ -1,6 +1,6 @@
 """
 هندلر اصلی پیام‌های متنی: صلوات، ذکر، و دستورات بازی
-(بانک اذکار / نامه اعمالم / تسبیح).
+(مسیر انتظار / نامه اعمالم / تسبیح).
 
 طبق اصلاحات نهایی:
 - فعالیت (صلوات/ذکر) فقط داخل گروه ثبت می‌شود؛ پیام‌های PV هرگز فعالیت محسوب نمی‌شوند.
@@ -31,7 +31,7 @@ from bot.database.engine import async_session_factory
 from bot.domain import dhikr_circle as circle_domain
 from bot.domain import closing_lines
 from bot.domain.milestones import (
-    COMMAND_BANK_AZKAR,
+    COMMAND_PATH,
     COMMAND_DHIKR_CIRCLE,
     COMMAND_DUA_QUEUE,
     COMMAND_JOB,
@@ -100,16 +100,16 @@ def _apply_test_level(user, level: int) -> None:
     کاربر را برای تست مستقیم وارد یک سطح می‌کند، با وضعیتی که در بازی واقعی هم
     در ابتدای همان سطح دیده می‌شد:
 
-    - سطح ۱: شروع تازه‌ی سطح ۱ (پیشرفت ۱/۱۲)؛ قابلیت‌های سطح ۱ (بانک اذکار، نامه اعمال،
-      تسبیح) قفل می‌شوند تا milestoneهای ۳/۶/۹ دوباره قابل تست باشند.
-    - سطح ۲: پیشرفت ۱/۲۴؛ قابلیت‌های سطح ۱ باز هستند (چون کاربر واقعی از سطح ۱ گذشته).
-    - سطح ۳: پیشرفت ۱/۳۶؛ قابلیت‌های سطح ۱ باز و نور برای تست شغل/ابزار حداقل ۵۰۰۰.
+    - سطح ۱: شروع تازه‌ی سطح ۱ (پیشرفت ۱/۵)؛ نامه اعمال و تسبیح قفل می‌شوند تا milestoneهای
+      ۳ و ۵ دوباره قابل تست باشند، و قبولی آزمون درس ۱ پاک می‌شود.
+    - سطح ۲: پیشرفت ۱/۲۴؛ قابلیت‌های سطح ۱ باز هستند و درس ۱ قبول‌شده حساب می‌شود.
+    - سطح ۳: پیشرفت ۱/۳۶؛ مثل سطح ۲ و نور برای تست شغل/ابزار حداقل ۵۰۰۰.
 
     نور، شغل، تومان و بقیه‌ی داده‌ها دست‌نخورده می‌مانند (به‌جز نور در سطح ۳).
     """
     from datetime import datetime, timezone
 
-    # بدون این، اولین صلوات کاربر «اولین فعالیت» حساب می‌شود و سطح را به ۱ برمی‌گرداند.
+    # بدون این، اولین ذکر کاربر «اولین فعالیت» حساب می‌شود و سطح را به ۱ برمی‌گرداند.
     if not user.game_started:
         user.game_started = True
     if user.game_started_at is None:
@@ -119,24 +119,25 @@ def _apply_test_level(user, level: int) -> None:
     user.level_progress = 1
 
     if level == 1:
-        # صلوات ۱ سطح ۱ ثبت شده فرض می‌شود؛ صلوات سیزدهم دوباره به سطح ۲ می‌برد.
+        # ذکر ۱ سطح ۱ ثبت‌شده فرض می‌شود؛ بعد از ۵/۵ و قبولی آزمون، ذکر بعدی به سطح ۲ می‌برد.
         user.salawat_count = 1
-        user.bank_azkar_unlocked = False
         user.nameh_amal_unlocked = False
         user.tasbih_unlocked = False
         user.tasbih_level = 0
+        user.lesson1_passed = False
+        user.exam_last_failed_at = None
         return
 
-    # سطح ۲ و ۳: قابلیت‌های سطح ۱ باز هستند.
-    user.bank_azkar_unlocked = True
+    # سطح ۲ و ۳: سطح ۱ تمام شده (درس ۱ قبول، قابلیت‌های سطح ۱ باز).
     user.nameh_amal_unlocked = True
     user.tasbih_unlocked = True
+    user.lesson1_passed = True
     if user.tasbih_level < 1:
         user.tasbih_level = 1
 
     if level == 2:
-        # صلوات سیزدهم اولین صلوات سطح ۲ است.
-        user.salawat_count = 13
+        # ذکرِ ورود به سطح ۲ اولین ذکر سطح ۲ بود.
+        user.salawat_count = 6
     elif level == 3:
         # برای تست شغل/ابزار: اگر نور کم بود تا ۵۰۰۰ پر می‌شود.
         if user.noor_current < 5000:
@@ -145,9 +146,9 @@ def _apply_test_level(user, level: int) -> None:
 
 def _test_level_reply(level: int) -> str:
     if level == 1:
-        return "✅ برای تست، وارد سطح ۱ شدی. پیشرفت سطح: ۱/۱۲\nقابلیت‌های سطح ۱ دوباره قفل شدند."
+        return "✅ برای تست، وارد سطح ۱ شدی. پیشرفت سطح: ۱/۵\nنامه اعمال، تسبیح و قبولی آزمون درس ۱ دوباره پاک شدند."
     if level == 2:
-        return "✅ برای تست، وارد سطح ۲ شدی. پیشرفت سطح: ۱/۲۴"
+        return "✅ برای تست، وارد سطح ۲ شدی. پیشرفت سطح: ۱/۲۴ (درس ۱ قبول‌شده حساب می‌شود)"
     return "✅ برای تست، وارد سطح ۳ شدی و نورت ۵۰۰۰ شد. بنویس: «شغل»"
 
 
@@ -163,9 +164,11 @@ async def _reset_everything(telegram_id: int, username: str | None, first_name: 
         DuaQueue,
         DuaQueueAnswer,
         DuaQueueExtraMessage,
+        ExamSession,
         LoanRequest,
         MarketListing,
         MarketPricePrompt,
+        PrayerClaim,
         User,
         UserProduct,
         UserProduction,
@@ -202,6 +205,8 @@ async def _reset_everything(telegram_id: int, username: str | None, first_name: 
 
             for model in (
                 DhikrUnlock,
+                ExamSession,
+                PrayerClaim,
                 Chest,
                 UserProduction,
                 UserRawMaterial,
@@ -269,6 +274,12 @@ async def handle_text_message(
                     message.from_user.first_name,
                 )
                 _apply_test_level(user, test_level)
+                if test_level == 1:
+                    from sqlalchemy import delete as _delete
+
+                    from bot.database.models import ExamSession as _ExamSession
+
+                    await session.execute(_delete(_ExamSession).where(_ExamSession.user_id == user.id))
                 await session.flush()
         await message.reply(_test_level_reply(test_level))
         return
@@ -351,10 +362,10 @@ async def handle_text_message(
     # این دستورات فعالیت صلوات/ذکر محسوب نمی‌شوند و در PV هم مجاز هستند.
     # -----------------------------------------------------------------------
 
-    if normalized == COMMAND_BANK_AZKAR:
-        from bot.handlers.commands import show_bank_azkar
+    if normalized == COMMAND_PATH:
+        from bot.handlers.path_panel import show_path_panel
 
-        await show_bank_azkar(message)
+        await show_path_panel(message)
         return
 
     if normalized == COMMAND_NAMEH_AMAL:
@@ -497,6 +508,18 @@ async def _render_outcome(
         return
 
     # -----------------------------------------------------------------------
+    # سطح ۱ تمام شده ولی آزمون درس ۱ («مسیر انتظار») هنوز قبول نشده: بدون نور
+    # -----------------------------------------------------------------------
+
+    if status == OutcomeStatus.EXAM_REQUIRED:
+        from bot.texts import path_texts
+
+        sent = await message.reply(path_texts.EXAM_REQUIRED_MESSAGE)
+        # مثل پیام cooldown، بعد از چند ثانیه حذف می‌شود تا گروه شلوغ نشود.
+        _schedule_autodelete(bot, sent)
+        return
+
+    # -----------------------------------------------------------------------
     # ذکر قفل‌شده
     # -----------------------------------------------------------------------
 
@@ -505,8 +528,7 @@ async def _render_outcome(
 
         await message.reply(
             (
-                f"🔒 «{dhikr.display_name}» هنوز باز نشده. "
-                f"برای باز کردنش «{COMMAND_BANK_AZKAR}» رو بفرست."
+                f"🔒 «{dhikr.display_name}» هنوز باز نشده."
             ),
             reply_markup=dhikr_unlock_button(dhikr),
         )

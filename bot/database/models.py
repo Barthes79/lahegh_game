@@ -56,10 +56,16 @@ class User(Base):
 
     reaction_explained: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
 
+    # (بانک اذکار حذف شد؛ این ستون فقط برای سازگاری با دیتابیس قدیمی مانده و استفاده نمی‌شود)
     bank_azkar_unlocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     nameh_amal_unlocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tasbih_unlocked: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     tasbih_level: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+
+    # --- مسیر انتظار (سطح ۱) ---
+    # قبولی آزمون درس ۱ شرط رفتن به سطح ۲ است؛ exam_last_failed_at برای انتظار ۱۵ دقیقه‌ای.
+    lesson1_passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    exam_last_failed_at: Mapped[datetime | None] = mapped_column(nullable=True)
 
     chest_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_chest_explained: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
@@ -376,3 +382,34 @@ class SchemaMigration(Base):
 
     version: Mapped[int] = mapped_column(Integer, primary_key=True)
     applied_at: Mapped[datetime] = mapped_column(nullable=False)
+
+
+class PrayerClaim(Base):
+    """ثبت «نماز اول وقت خواندم» — برای هر (کاربر، نماز، روز) حداکثر یک ردیف."""
+
+    __tablename__ = "prayer_claims"
+    __table_args__ = (UniqueConstraint("user_id", "prayer_key", "day"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    prayer_key: Mapped[str] = mapped_column(String, nullable=False)
+    day: Mapped[str] = mapped_column(String, nullable=False)
+    claimed_at: Mapped[datetime] = mapped_column(nullable=False)
+    noor_reward: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class ExamSession(Base):
+    """یک دور آزمون درس؛ question_order/answers رشته‌ی JSON هستند."""
+
+    __tablename__ = "exam_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False, index=True)
+    lesson_no: Mapped[int] = mapped_column(Integer, nullable=False)
+    question_order: Mapped[str] = mapped_column(String, nullable=False)
+    answers: Mapped[str] = mapped_column(String, nullable=False, default="[]")
+    status: Mapped[str] = mapped_column(String, nullable=False, default="active")
+    score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    passed: Mapped[bool | None] = mapped_column(Boolean, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(nullable=False)
+    finished_at: Mapped[datetime | None] = mapped_column(nullable=True)

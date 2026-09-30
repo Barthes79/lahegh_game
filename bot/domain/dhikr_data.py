@@ -2,8 +2,11 @@
 تعریف ذکرها (بخش ۵ و ۶ سند).
 
 برای اضافه کردن ذکر جدید در آینده، کافیست یک DhikrDefinition جدید به DHIKR_LIST
-اضافه شود (با key منحصربه‌فرد). بقیه‌ی سیستم (بانک اذکار، unlock، ثبت فعالیت)
-به‌صورت خودکار آن را پشتیبانی می‌کند.
+اضافه شود (با key منحصربه‌فرد).
+
+توجه: ذکرهای عمومی قدیمی (الحمدلله، لا اله الا الله، سبحان الله، الله اکبر) و بانک اذکار حذف شدند؛
+ذکر اصلی بازی «اللهم عجل لولیک الفرج» است (bot/domain/salawat_data.py). فقط ذکرهای ویژه‌ی حلقه
+ذکر در این لیست مانده‌اند.
 
 توجه: طبق بخش ۲۴ (TODO)، threshold سطح باز شدن ذکرهای آینده هنوز مشخص نشده و
 نباید توسط ما اختراع شود؛ فعلاً هر ۴ ذکر از همان ابتدای Level 1 (بعد از unlock) قابل استفاده‌اند.
@@ -27,35 +30,6 @@ class DhikrDefinition:
 
 
 DHIKR_LIST: list[DhikrDefinition] = [
-    DhikrDefinition(
-        key="alhamdulillah",
-        display_name="الحمدلله",
-        canonical_texts=("الحمدلله",),
-        noor_reward=5,
-        unlock_cost=0,
-        cooldown_seconds=1,
-    ),
-    DhikrDefinition(
-        key="la_ilaha_illallah",
-        display_name="لا اله الا الله",
-        canonical_texts=("لا اله الا الله",),
-        noor_reward=6,
-        unlock_cost=300,
-    ),
-    DhikrDefinition(
-        key="subhanallah",
-        display_name="سبحان الله",
-        canonical_texts=("سبحان الله",),
-        noor_reward=7,
-        unlock_cost=700,
-    ),
-    DhikrDefinition(
-        key="allahu_akbar",
-        display_name="الله اکبر",
-        canonical_texts=("الله اکبر",),
-        noor_reward=8,
-        unlock_cost=1500,
-    ),
     # ---------------------------------------------------------------------
     # ذکرهای ویژه‌ی «حلقه ذکر»: هر بار که کاربر می‌نویسد «حلقه ذکر»، یکی از
     # این ۵ ذکر به‌صورت تصادفی برایش انتخاب و تا ۲۴ ساعت ثابت نگه داشته

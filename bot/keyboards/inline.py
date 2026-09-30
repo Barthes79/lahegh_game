@@ -11,7 +11,7 @@
   Level 2 — صف دعا:
   (dua_ans:<queue_id> منسوخ شد: التماس دعا اکنون با ریپلای روی پنل پاسخ داده می‌شود)
 
-  پنل تسبیح (owner-scoped، مثل پنل بانک اذکار):
+  پنل تسبیح (owner-scoped):
   tsb:main:<owner_id>            -> بازگشت به صفحه‌ی اصلی پنل تسبیح
   tsb:upgrade_ask:<owner_id>     -> نمایش تأییدیه ارتقا
   tsb:upgrade_confirm:<owner_id> -> اجرای ارتقا
@@ -23,56 +23,6 @@ from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
 from bot.domain.dhikr_data import DhikrDefinition
 from bot.texts import messages as texts
-
-# ---------------------------------------------------------------------------
-# پنل بانک اذکار (اصلاحات نهایی): callback_data شامل owner_id است تا در هندلر بتوان
-# تشخیص داد کلیک از طرف صاحب پنل است یا نه.
-#   bnk:main:<owner_id>              -> بازگشت به صفحه‌ی اصلی پنل
-#   bnk:view:<owner_id>:<key>        -> نمایش صفحه‌ی جزئیات یک ذکر
-#   bnk:buy:<owner_id>:<key>         -> تایید خرید همان ذکر
-# ---------------------------------------------------------------------------
-
-
-def bank_azkar_main_keyboard(
-    owner_id: int, dhikr_list: list[DhikrDefinition], unlocked_map: dict[str, bool]
-) -> InlineKeyboardMarkup:
-    rows = [
-        [
-            InlineKeyboardButton(
-                text=texts.bank_azkar_entry_button_label(dhikr, unlocked_map.get(dhikr.key, False)),
-                callback_data=f"bnk:view:{owner_id}:{dhikr.key}",
-            )
-        ]
-        for dhikr in dhikr_list
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=rows)
-
-
-def bank_azkar_detail_keyboard(owner_id: int, dhikr_key: str, unlocked: bool) -> InlineKeyboardMarkup:
-    back_row = [
-        InlineKeyboardButton(text=texts.BANK_AZKAR_BACK_BUTTON_LABEL, callback_data=f"bnk:main:{owner_id}")
-    ]
-    if unlocked:
-        return InlineKeyboardMarkup(inline_keyboard=[back_row])
-    buy_row = [
-        InlineKeyboardButton(
-            text=texts.BANK_AZKAR_BUY_BUTTON_LABEL, callback_data=f"bnk:buy:{owner_id}:{dhikr_key}"
-        )
-    ]
-    return InlineKeyboardMarkup(inline_keyboard=[buy_row, back_row])
-
-
-def bank_azkar_back_keyboard(owner_id: int) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(
-        inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=texts.BANK_AZKAR_BACK_BUTTON_LABEL, callback_data=f"bnk:main:{owner_id}"
-                )
-            ]
-        ]
-    )
-
 
 def dhikr_unlock_button(dhikr: DhikrDefinition) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(

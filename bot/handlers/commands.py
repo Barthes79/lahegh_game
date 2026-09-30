@@ -1,5 +1,5 @@
 """
-صفحات بازی: «بانک اذکار» (بخش ۱۳)، «نامه اعمالم» (بخش ۱۴)، «تسبیح» (بخش ۱۵).
+صفحات بازی: «نامه اعمالم» (بخش ۱۴)، «تسبیح» (بخش ۱۵). (پنل «مسیر انتظار» در bot/handlers/path_panel.py)
 
 طبق اصلاحات نهایی: /start هیچ نقشی در شروع بازی ندارد — شروع بازی فقط با
 اولین صلوات معتبر در گروه اتفاق می‌افتد (در bot/services/activity_service.py).
@@ -20,17 +20,12 @@ from aiogram.types import FSInputFile, Message
 from sqlalchemy import func, select
 
 from bot.database.engine import async_session_factory
-from bot.domain.dhikr_data import DHIKR_LIST
 from bot.domain.salawat_data import get_level_required_salawat
 from bot.domain.tasbih_data import get_dhikr_cooldown_for_level
-from bot.keyboards.inline import (
-    bank_azkar_main_keyboard,
-    tasbih_panel_main_keyboard,
-)
-from bot.services.unlock_service import is_unlocked
+from bot.keyboards.inline import tasbih_panel_main_keyboard
 from bot.services.user_service import get_user_by_telegram_id
 from bot.texts import messages as texts
-from bot.utils.assets import BANK_AZKAR_PHOTO_PATH, TASBIH_PHOTO_PATH
+from bot.utils.assets import TASBIH_PHOTO_PATH
 
 router = Router(name="commands")
 
@@ -115,55 +110,6 @@ def format_shamsi_datetime(dt) -> str:
     )
 
     return to_persian_digits(result)
-
-
-# ---------------------------------------------------------------------------
-# پنل «بانک اذکار»
-# ---------------------------------------------------------------------------
-
-
-async def show_bank_azkar(message: Message) -> None:
-    """
-    پنل «بانک اذکار» — یک پیام واحد با دکمه برای هر ذکر (نه چند پیام جدا).
-
-    هر بار کاربر «بانک اذکار» را بفرستد، یک پنل مستقل و جدید ساخته می‌شود؛
-    پنل‌های قبلی دست‌نخورده باقی می‌مانند.
-
-    نور فعلی کاربر در پنل نشان داده نمی‌شود.
-    """
-    if message.from_user is None:
-        return
-
-    owner_id = message.from_user.id
-
-    async with async_session_factory() as session:
-        user = await get_user_by_telegram_id(
-            session,
-            owner_id,
-        )
-
-        if user is None or not user.bank_azkar_unlocked:
-            return  # قابلیت هنوز باز نشده -> نادیده بگیر (بخش ۱۲)
-
-        unlocked_map = {
-            dhikr.key: await is_unlocked(
-                session,
-                user,
-                dhikr,
-            )
-            for dhikr in DHIKR_LIST
-        }
-
-    await message.reply_photo(
-        FSInputFile(BANK_AZKAR_PHOTO_PATH),
-        caption=texts.bank_azkar_panel_header(),
-        reply_markup=bank_azkar_main_keyboard(
-            owner_id,
-            DHIKR_LIST,
-            unlocked_map,
-        ),
-        parse_mode="Markdown",
-    )
 
 
 # ---------------------------------------------------------------------------
@@ -253,7 +199,7 @@ async def show_nameh_amal(message: Message) -> None:
 
 async def show_tasbih(message: Message) -> None:
     """
-    پنل «تسبیح» — مثل پنل بانک اذکار: یک پیام واحد (عکس + کپشن)
+    پنل «تسبیح» — یک پیام واحد (عکس + کپشن)
     که owner_id در callback_data تمام دکمه‌هایش کدگذاری شده
     (bot/handlers/tasbih_panel.py).
 

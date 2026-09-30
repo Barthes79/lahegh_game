@@ -101,7 +101,7 @@ def first_salawat_registered(
     paragraphs = [
         "🎉 به سطح ۱ رسیدی!",
         "🌱 اولین قدمت رو برداشتی...",
-        "🤲 صلواتت ثبت شد 📿 و مسیرت در لاحق شروع شد.",
+        "🤲 ذکرت ثبت شد 📿 و مسیرت در لاحق شروع شد.",
         "🎉 به سطح ۱ رسیدی!",
         (
             f"💫 +{to_persian_digits(noor_reward)} نور\n"
@@ -109,12 +109,12 @@ def first_salawat_registered(
             f"{render_progress_bar(level_progress, level_total)}"
         ),
         (
-            "هر صلوات، تو رو یک قدم به سطح بعد نزدیک‌تر می‌کنه.\n"
-            "و با ذکر الحمدلله می‌تونی نور به دست بیاری و مسیرت رو روشن‌تر کنی. ✨"
+            "هر «اللهم عجل لولیک الفرج»، تو رو یک قدم به سطح بعد نزدیک‌تر می‌کنه.\n"
+            "برای شروع درس‌ها و نماز اول وقت، بنویس: «مسیر انتظار» ✨"
         ),
         (
             "🌿 راهت رو ادامه بده...\n"
-            "قدم بعدی، با یک صلواته."
+            "قدم بعدی، با یک «اللهم عجل لولیک الفرج»ه."
         ),
     ]
     return "\n\n".join(paragraphs)
@@ -133,10 +133,10 @@ def salawat_success(
     progress_line: str | None = None,
 ) -> str:
     lines = [
-        "📿 صلواتت با موفقیت ثبت شد.",
+        "📿 ذکرت با موفقیت ثبت شد.",
         f"✨ +{to_persian_digits(noor_reward)} نور",
         f"💫 نور معنویتت رسید به: {to_persian_digits(noor_current)}",
-        f"⏳ صلوات بعدی: {format_mmss(cooldown_seconds)}",
+        f"⏳ ذکر بعدی: {format_mmss(cooldown_seconds)}",
     ]
 
     if progress_line is not None:
@@ -184,8 +184,8 @@ def reaction_first_time_explanation(
 ) -> str:
     is_dhikr = activity_kind == "dhikr"
 
-    activity_name = "ذکرت" if is_dhikr else "صلواتت"
-    activity_plural = "ذکرها" if is_dhikr else "صلوات‌ها"
+    activity_name = "ذکرت"
+    activity_plural = "ذکرها"
 
     lines = [
         f"🙏 این ری‌اکشن یعنی {activity_name} با موفقیت ثبت شده و نورش رو دریافت کردی.",
@@ -246,7 +246,7 @@ def pv_activity_result(
         ]
     else:
         lines = [
-            "🤲 صلواتت ثبت شد 📿",
+            "🤲 ذکرت ثبت شد 📿",
             f"✨ +{to_persian_digits(noor_reward)} نور",
             f"💫 نور معنویتت: {to_persian_digits(noor_current)}",
         ]
@@ -263,7 +263,7 @@ def pv_activity_result(
 
 
 def salawat_cooldown_message(remaining_seconds: int) -> str:
-    return f"⏳ صلوات بعدی: {format_mmss(remaining_seconds)}"
+    return f"⏳ ذکر بعدی: {format_mmss(remaining_seconds)}"
 
 
 def dhikr_cooldown_message(remaining_seconds: int) -> str:
@@ -280,18 +280,11 @@ def dhikr_cooldown_message(remaining_seconds: int) -> str:
 
 
 _MILESTONE_FEATURE_PARAGRAPHS: dict[str, list[str]] = {
-    "bank_azkar": [
-        "✨ **یک بخش تازه برات باز شد...**",
-        "📖 **بانک اذکار**",
-        "از اینجا می‌تونی ذکرهای مختلف رو ببینی و با نورت بعضی از اون‌ها رو باز کنی.",
-        "💫 هر ذکر، مقدار نور متفاوتی بهت می‌ده.",
-        "برای دیدنش بنویس: **«بانک اذکار»**",
-    ],
     "nameh_amal": [
         "🌿 **نصف راه سطح ۱ رو رفتی...**",
-        "همینطور با آرامش ادامه بده؛ هر صلوات یه قدم دیگه به سمت جلوئه.",
+        "همینطور با آرامش ادامه بده؛ هر ذکر یه قدم دیگه به سمت جلوئه.",
         "📜 **یک بخش تازه هم برات باز شد: نامه اعمالم**",
-        "از اینجا می‌تونی مسیرت در «لاحق» رو ببینی؛ از تعداد صلوات و ذکرها گرفته تا نور و فعالیت‌هات.",
+        "از اینجا می‌تونی مسیرت در «لاحق» رو ببینی؛ از تعداد ذکرها گرفته تا نور و فعالیت‌هات.",
         "برای دیدنش بنویس: **«نامه اعمالم»**",
     ],
     "tasbih": [
@@ -300,6 +293,11 @@ _MILESTONE_FEATURE_PARAGRAPHS: dict[str, list[str]] = {
         "با ارتقای تسبیح، زمان انتظار بین ذکرهات کمتر می‌شه.",
         "هرچه تسبیحت رو بالاتر ببری، سریع‌تر می‌تونی ذکرهای بیشتری ثبت کنی. ✨",
         "برای دیدن وضعیت تسبیحت بنویس: **«تسبیح»**",
+        "",
+        "🕰 **مسیر سطح ۱ تموم شد (۵/۵).**",
+        "برای رفتن به سطح ۲، باید **درس ۱ نماز** رو در پنل **«مسیر انتظار»** بخونی و آزمونش رو قبول بشی.",
+        "بعدش با یک «اللهم عجل لولیک الفرج» وارد سطح ۲ می‌شی.",
+        "برای دیدنش بنویس: **«مسیر انتظار»**",
     ],
     "level_up": [
         "🌟 **مسیر سطح ۱ رو کامل کردی...**",
@@ -320,7 +318,7 @@ def salawat_milestone_message(
     feature_paragraphs = _MILESTONE_FEATURE_PARAGRAPHS.get(milestone_kind, [])
 
     lines = [
-        "🤲 صلواتت ثبت شد 📿",
+        "🤲 ذکرت ثبت شد 📿",
         f"✨ +{to_persian_digits(noor_reward)} نور",
         f"💫 نور معنویتت: {to_persian_digits(noor_current)}",
         render_progress_bar(level_progress, level_total),
@@ -331,71 +329,6 @@ def salawat_milestone_message(
 
     return "\n".join(lines)
 
-
-# ---------------------------------------------------------------------------
-# بخش ۱۳: بانک اذکار
-# ---------------------------------------------------------------------------
-
-
-def bank_azkar_panel_header() -> str:
-    return (
-        "🗝 **بانک اذکار**\n\n"
-        "ذکرهایی که باز کردی نور می‌دن؛ برای بقیه می‌تونی با نور بازشون کنی."
-    )
-
-
-def bank_azkar_entry_button_label(
-    dhikr: DhikrDefinition,
-    unlocked: bool,
-) -> str:
-    status = "✅" if unlocked else "🔒"
-    return f"{status} {dhikr.display_name} — ✨{to_persian_digits(dhikr.noor_reward)}"
-
-
-def bank_azkar_detail_unlocked(dhikr: DhikrDefinition) -> str:
-    return (
-        f"**{dhikr.display_name}**\n\n"
-        f"✨ {to_persian_digits(dhikr.noor_reward)} نور در هر بار\n"
-        f"✅ باز شده"
-    )
-
-
-def bank_azkar_detail_locked(dhikr: DhikrDefinition) -> str:
-    cost = (
-        "رایگان"
-        if dhikr.unlock_cost == 0
-        else f"{to_persian_digits(dhikr.unlock_cost)} نور"
-    )
-
-    return (
-        f"🔒 **{dhikr.display_name}**\n\n"
-        f"✨ {to_persian_digits(dhikr.noor_reward)} نور در هر بار\n"
-        f"💫 هزینه باز کردن: {cost}\n\n"
-        "می‌خوای این ذکر رو باز کنی؟"
-    )
-
-
-def bank_azkar_purchase_success(dhikr: DhikrDefinition) -> str:
-    return (
-        f"✅ «{dhikr.display_name}» با موفقیت باز شد!\n"
-        "از حالا هر وقت بفرستیش نور می‌گیری."
-    )
-
-
-def bank_azkar_purchase_insufficient(
-    dhikr: DhikrDefinition,
-    noor_current: int,
-) -> str:
-    missing = dhikr.unlock_cost - noor_current
-    return (
-        f"💫 نورت برای باز کردن «{dhikr.display_name}» کافی نیست.\n"
-        f"نیاز: {to_persian_digits(dhikr.unlock_cost)} | "
-        f"کمبود: {to_persian_digits(missing)}"
-    )
-
-
-BANK_AZKAR_BACK_BUTTON_LABEL = "↩️ بازگشت به بانک اذکار"
-BANK_AZKAR_BUY_BUTTON_LABEL = "تایید خرید ✅"
 
 UNLOCK_BUTTON_LABEL = "باز کردن 🔓"
 
@@ -460,10 +393,10 @@ def nameh_amal(
         f"📅 تاریخ شروع پیشرفت معنویت: {start_date_str}",
         f"🎚 سطح فعلی: {to_persian_digits(level)}",
         (
-            f"🤲 پیشرفت صلوات: "
+            f"🤲 پیشرفت ذکر: "
             f"{render_progress_bar(salawat_progress, salawat_progress_total)}"
         ),
-        f"🤲 تعداد صلوات: {to_persian_digits(salawat_count)}",
+        f"🤲 تعداد ذکرها: {to_persian_digits(salawat_count)}",
         f"✨ تعداد ذکرها: {to_persian_digits(dhikr_count)}",
         f"💫 نور معنویتت: {to_persian_digits(noor_current)}",
         f"🎁 تعداد صندوقچه‌های پیدا شده: {to_persian_digits(chest_count)}",

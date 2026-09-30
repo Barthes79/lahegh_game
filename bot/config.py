@@ -23,6 +23,21 @@ def _get_int(name: str, default: int) -> int:
         return default
 
 
+def _get_float(name: str, default: float) -> float:
+    val = os.getenv(name)
+    if val is None or val.strip() == "":
+        return default
+    try:
+        return float(val)
+    except ValueError:
+        return default
+
+
+def _get_str(name: str, default: str) -> str:
+    val = os.getenv(name)
+    return default if val is None or val.strip() == "" else val.strip()
+
+
 def _get_admin_ids() -> set[int]:
     raw = os.getenv("ADMIN_IDS", "")
     ids: set[int] = set()
@@ -49,6 +64,13 @@ class Settings:
     reminder_check_interval_minutes: int = field(
         default_factory=lambda: _get_int("REMINDER_CHECK_INTERVAL_MINUTES", 30)
     )
+
+    # --- مسیر انتظار: اوقات شرعی (Aladhan API) ---
+    # پیش‌فرض: تهران، روش ۷ (مؤسسه ژئوفیزیک دانشگاه تهران). همه از .env قابل تغییرند.
+    prayer_latitude: float = field(default_factory=lambda: _get_float("PRAYER_LATITUDE", 35.6892))
+    prayer_longitude: float = field(default_factory=lambda: _get_float("PRAYER_LONGITUDE", 51.3890))
+    prayer_method: int = field(default_factory=lambda: _get_int("PRAYER_METHOD", 7))
+    prayer_timezone: str = field(default_factory=lambda: _get_str("PRAYER_TIMEZONE", "Asia/Tehran"))
 
 
 settings = Settings()

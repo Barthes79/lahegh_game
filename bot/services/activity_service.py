@@ -23,8 +23,6 @@ from bot.domain import dua_queue as dua_queue_domain
 from bot.domain.cooldown import get_salawat_cooldown_seconds, remaining_seconds
 from bot.domain.dhikr_data import CIRCLE_DISPLAY_DHIKR_KEYS, DHIKR_BY_KEY, DhikrDefinition
 from bot.domain.milestones import (
-    MILESTONE_BANK_AZKAR,
-    MILESTONE_LEVEL_UP,
     MILESTONE_LEVEL_UP_3,
     MILESTONE_NAMEH_AMAL,
     MILESTONE_TASBIH,
@@ -60,6 +58,8 @@ class OutcomeStatus:
     COOLDOWN = "cooldown"
     CIRCLE_DAILY_LIMIT = "circle_daily_limit"
     JAILED = "jailed"
+    # سطح ۱: ۵/۵ تمام شده ولی آزمون درس ۱ («مسیر انتظار») هنوز قبول نشده؛ نور/پیشرفتی ثبت نمی‌شود.
+    EXAM_REQUIRED = "exam_required"
     SUCCESS = "success"
 
 
@@ -84,7 +84,7 @@ class ActivityOutcome:
     use_full_message: bool = True
     needs_reaction_explanation: bool = False
 
-    # اصلاحات نهایی: milestone_kind یکی از "bank_azkar"/"nameh_amal"/"tasbih"/"level_up" یا
+    # milestone_kind یکی از "nameh_amal"/"tasbih"/"level_up" یا
     # None است. وقتی مقدار دارد، handler باید یک پیام کامل واحد (فعالیت+Milestone) بسازد
     # و رندر جداگانه‌ی نتیجه‌ی فعالیت/reaction/PV را برای همین فعالیت انجام ندهد.
     milestone_kind: str | None = None
@@ -188,6 +188,17 @@ async def process_activity(
     if classification.kind == ActivityKind.SALAWAT:
         is_first_activity = not user.game_started
 
+        # سطح ۱: بعد از ۵/۵ تا قبولی آزمون درس ۱، ذکر بعدی هیچ نوری نمی‌دهد و چیزی ثبت نمی‌شود.
+        if (
+            not is_first_activity
+            and user.level == 1
+            and user.level_progress >= LEVEL_1_REQUIRED_SALAWAT
+            and not user.lesson1_passed
+        ):
+            return ActivityOutcome(
+                status=OutcomeStatus.EXAM_REQUIRED, activity_kind=ActivityKind.SALAWAT
+            )
+
         if not is_first_activity:
             prior_cooldown = get_salawat_cooldown_seconds(max(user.salawat_count - 1, 0))
             remaining = remaining_seconds(user.last_salawat_at, prior_cooldown, now)
@@ -226,13 +237,6 @@ async def process_activity(
             circle_daily_count = await get_circle_daily_count(session, user, now=now)
             if circle_daily_count >= circle_domain.CIRCLE_DAILY_TARGET:
                 return ActivityOutcome(status=OutcomeStatus.CIRCLE_DAILY_LIMIT)
-
-    # اصلاحات نهایی («ذکر قبل از باز شدن بانک»): قبل از رسیدن کاربر به صلوات سوم (باز شدن
-    # بانک اذکار)، هر ذکر پولی/قفل (غیر از الحمدلله رایگان) باید کاملاً بی‌پاسخ بماند —
-    # نه پیام قفل، نه ری‌اکشن، نه نور. الحمدلله (unlock_cost=0) از این قاعده مستثناست چون
-    # از همان صلوات اول معرفی و قابل‌استفاده است.
-    if dhikr.unlock_cost > 0 and not user.bank_azkar_unlocked:
-        return ActivityOutcome(status=OutcomeStatus.INVALID_SILENT)
 
     unlocked = await _is_dhikr_unlocked(session, user, dhikr)
     if not unlocked:
@@ -293,31 +297,26 @@ async def _register_salawat(
     )
 
     if user.level == 1:
-        # صلوات ۱ تا ۱۲ فقط سطح ۱ را کامل می‌کنند؛ ۱۲/۱۲ هنوز سطح ۲ نیست.
-        if user.salawat_count <= LEVEL_1_REQUIRED_SALAWAT:
-            user.level_progress = min(
-                LEVEL_1_REQUIRED_SALAWAT, user.level_progress + SALAWAT_PROGRESS_STEP
-            )
-
-        if user.level_progress == MILESTONE_BANK_AZKAR and not user.bank_azkar_unlocked:
-            user.bank_azkar_unlocked = True
-            outcome.milestone_kind = "bank_azkar"
-
-        if user.level_progress == MILESTONE_NAMEH_AMAL and not user.nameh_amal_unlocked:
-            user.nameh_amal_unlocked = True
-            outcome.milestone_kind = "nameh_amal"
-
-        if user.level_progress == MILESTONE_TASBIH and not user.tasbih_unlocked:
-            user.tasbih_unlocked = True
-            user.tasbih_level = 1
-            outcome.milestone_kind = "tasbih"
-
-        # صلوات سیزدهم اولین صلوات سطح ۲ است و باید 1/24 نمایش داده شود.
-        if user.salawat_count == MILESTONE_LEVEL_UP and user.level == 1:
+        if user.level_progress >= LEVEL_1_REQUIRED_SALAWAT:
+            # ۵/۵ تمام شده و آزمون درس ۱ قبول شده (وگرنه process_activity قبل از رسیدن به اینجا
+            # با EXAM_REQUIRED برمی‌گشت): این ذکر اولین ذکر سطح ۲ است و 1/24 نشان داده می‌شود.
             user.level = 2
             user.level_progress = 1
             outcome.level_up_triggered = True
             outcome.milestone_kind = "level_up"
+        else:
+            user.level_progress = min(
+                LEVEL_1_REQUIRED_SALAWAT, user.level_progress + SALAWAT_PROGRESS_STEP
+            )
+
+            if user.level_progress == MILESTONE_NAMEH_AMAL and not user.nameh_amal_unlocked:
+                user.nameh_amal_unlocked = True
+                outcome.milestone_kind = "nameh_amal"
+
+            if user.level_progress == MILESTONE_TASBIH and not user.tasbih_unlocked:
+                user.tasbih_unlocked = True
+                user.tasbih_level = 1
+                outcome.milestone_kind = "tasbih"
 
     elif user.level == 2:
         if user.level_progress >= LEVEL_2_REQUIRED_SALAWAT:

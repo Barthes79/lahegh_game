@@ -3,16 +3,17 @@ Milestoneهای Level 1 (بخش ۱۱) و متن دستورات ثابت بازی
 """
 from __future__ import annotations
 
-MILESTONE_BANK_AZKAR = 3
-MILESTONE_NAMEH_AMAL = 6
-MILESTONE_TASBIH = 9
-MILESTONE_LEVEL_UP = 13  # صلوات سیزدهم: انتقال از سطح ۱ به سطح ۲
+# سطح ۱ پنج ذکر دارد (بانک اذکار حذف شده). نامه اعمال با ذکر ۳، تسبیح و پایان سطح با ذکر ۵.
+# ورود به سطح ۲ با ذکرِ بعد از ۵/۵ و فقط بعد از قبولی آزمون درس ۱ («مسیر انتظار») انجام می‌شود.
+MILESTONE_NAMEH_AMAL = 3
+MILESTONE_TASBIH = 5
 # انتقال از سطح ۲ به ۳: وقتی پیشرفت سطح ۲ به ۲۴/۲۴ رسیده باشد، صلواتِ بعدی کاربر را وارد
 # سطح ۳ می‌کند (milestone_kind = "level_up_3").
 MILESTONE_LEVEL_UP_3 = "level_up_3"
 
 # دستورات متنی ثابت بازی (بخش ۱۳، ۱۴، ۱۵)
-COMMAND_BANK_AZKAR = "بانک اذکار"
+# سطح ۱: پنل «مسیر انتظار» (جایگزین بانک اذکار) — نماز اول وقت، دروس و آزمون
+COMMAND_PATH = "مسیر انتظار"
 COMMAND_NAMEH_AMAL = "نامه اعمالم"
 COMMAND_TASBIH = "تسبیح"
 
@@ -32,7 +33,7 @@ COMMAND_WAREHOUSE = "انبار"
 COMMAND_BANK = "بانک"
 
 GAME_TRIGGER_COMMANDS = {
-    COMMAND_BANK_AZKAR,
+    COMMAND_PATH,
     COMMAND_NAMEH_AMAL,
     COMMAND_TASBIH,
     COMMAND_DUA_QUEUE,

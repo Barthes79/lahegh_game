@@ -424,6 +424,12 @@ async def handle_text_message(
         if await try_handle_bank_reply(message, event_update):
             return
 
+    # Level 3: کارت‌به‌کارت مستقیم — «شماره‌کارت مبلغ» بدون پنل و بدون ریپلای (گروه و PV)
+    from bot.handlers.bank_panel import try_handle_direct_transfer
+
+    if await try_handle_direct_transfer(message, event_update):
+        return
+
     if message.reply_to_message is not None and _chat_allows_activity(message.chat.type):
         from bot.handlers.dua_queue import try_handle_dua_queue_reply
 

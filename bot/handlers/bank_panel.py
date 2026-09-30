@@ -11,6 +11,7 @@ callback_data: bank:<action>:<owner_id>
 from __future__ import annotations
 
 import logging
+import re
 
 from aiogram import Router
 from aiogram.exceptions import TelegramBadRequest
@@ -113,6 +114,93 @@ async def show_bank_panel(message: Message) -> None:
 
 
 # ---------------------------------------------------------------------------
+# کارت‌به‌کارت مستقیم: فقط نوشتن «شماره‌کارت مبلغ» در چت (بدون پنل و بدون ریپلای)
+# ---------------------------------------------------------------------------
+
+# کاندیدهای ۱۶ رقمی (ارقام فارسی/انگلیسی) که می‌توانند با فاصله یا خط‌تیره گروه‌بندی شده باشند.
+# lookahead باعث می‌شود کاندیدهای هم‌پوشان هم بررسی شوند (مثلاً مبلغ قبل از شماره کارت).
+_CARD_CANDIDATE = re.compile(r"(?<!\d)(?=(\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4})(?!\d))")
+
+
+def parse_direct_transfer(text: str) -> tuple[str, int] | None:
+    """
+    «6219-6756-3058-1121 5000» یا «5000 6219675630581121» -> (۱۶ رقم کارت، مبلغ).
+    اگر متن دقیقاً از یک شماره کارت + یک مبلغ تشکیل نشده باشد None برمی‌گرداند تا پیام‌های
+    عادی گروه هرگز به‌عنوان انتقال پول برداشت نشوند. این تابع به دیتابیس دست نمی‌زند.
+    کارت معتبر باید با پیشوند کارت‌های بازی (bd.CARD_BIN) شروع شود؛ این کار مبهم‌بودن
+    «مبلغ + کارت» را از بین می‌برد.
+    """
+    if not text:
+        return None
+    translated = text.translate(bd._CARD_DIGIT_TRANSLATE)
+    for match in _CARD_CANDIDATE.finditer(translated):
+        raw = match.group(1)
+        digits = bd.normalize_card_number(raw)
+        if digits is None or not digits.startswith(bd.CARD_BIN):
+            continue
+        start = match.start()
+        rest = (translated[:start] + " " + translated[start + len(raw) :]).strip()
+        if not rest:
+            return None  # فقط شماره کارت (مثلاً کسی کارت خودش را فرستاده) -> نادیده بگیر
+        amount = parse_price(rest)
+        if amount is not None:
+            return digits, amount
+    return None
+
+
+async def _run_transfer(
+    session, message: Message, user: User, digits: str, amount: int
+) -> tuple[str, bool, tuple[int, str] | None]:
+    """انتقال را انجام می‌دهد؛ (متن پاسخ، موفق بودن، اطلاع‌رسانی به گیرنده) را برمی‌گرداند."""
+    out = await bs.transfer_by_card(session, user, digits, amount)
+    if out.result == BankResult.SUCCESS:
+        name = message.from_user.first_name or message.from_user.username or "یک کاربر"
+        return (
+            bt.transfer_success(out.detail),
+            True,
+            (out.other_telegram_id, bt.transfer_received_notice(name, out.detail)),
+        )
+    if out.result == BankResult.CARD_NOT_FOUND:
+        return bt.TRANSFER_CARD_NOT_FOUND, False, None
+    if out.result == BankResult.SELF_TRANSFER:
+        return bt.TRANSFER_SELF, False, None
+    if out.result == BankResult.INSUFFICIENT_FUNDS:
+        return bt.transfer_insufficient(out.detail), False, None
+    return bt.TRANSFER_BAD_FORMAT, False, None
+
+
+async def try_handle_direct_transfer(message: Message, event_update: Update) -> bool:
+    """
+    پیام شامل «شماره‌کارت + مبلغ» را بدون نیاز به پنل/ریپلای انتقال می‌دهد (گروه و PV).
+    True یعنی پیام مصرف شد و دیگر نباید به‌عنوان صلوات/ذکر بررسی شود.
+    """
+    if message.from_user is None or not message.text:
+        return False
+    parsed = parse_direct_transfer(message.text)  # بدون دیتابیس؛ پیام‌های عادی همین‌جا رد می‌شوند
+    if parsed is None:
+        return False
+    digits, amount = parsed
+
+    notify: tuple[int, str] | None = None
+    async with async_session_factory() as session:
+        async with session.begin():
+            user = await get_user_by_telegram_id(session, message.from_user.id)
+            if user is None:
+                return False
+            if not await try_claim_update(session, event_update.update_id):
+                return True
+            reply_text, _ok, notify = await _run_transfer(session, message, user, digits, amount)
+
+    await message.reply(reply_text)
+    if notify is not None and notify[0]:
+        try:
+            await message.bot.send_message(chat_id=notify[0], text=notify[1])
+        except Exception:  # noqa: BLE001
+            logger.debug("اطلاع‌رسانی واریز به گیرنده ناموفق بود", exc_info=True)
+    return True
+
+
+# ---------------------------------------------------------------------------
 # ورود متنی با ریپلای (کارت‌به‌کارت / مبلغ وام)
 # ---------------------------------------------------------------------------
 
@@ -150,20 +238,11 @@ async def try_handle_bank_reply(message: Message, event_update: Update) -> bool:
                 if digits is None or amount is None:
                     reply_text = bt.TRANSFER_BAD_FORMAT
                 else:
-                    out = await bs.transfer_by_card(session, user, digits, amount)
-                    if out.result == BankResult.SUCCESS:
+                    reply_text, ok, notify = await _run_transfer(
+                        session, message, user, digits, amount
+                    )
+                    if ok:
                         await bs.clear_prompt(session, user)
-                        reply_text = bt.transfer_success(out.detail)
-                        name = message.from_user.first_name or message.from_user.username or "یک کاربر"
-                        notify = (out.other_telegram_id, bt.transfer_received_notice(name, out.detail))
-                    elif out.result == BankResult.CARD_NOT_FOUND:
-                        reply_text = bt.TRANSFER_CARD_NOT_FOUND
-                    elif out.result == BankResult.SELF_TRANSFER:
-                        reply_text = bt.TRANSFER_SELF
-                    elif out.result == BankResult.INSUFFICIENT_FUNDS:
-                        reply_text = bt.transfer_insufficient(out.detail)
-                    else:
-                        reply_text = bt.TRANSFER_BAD_FORMAT
 
             elif prompt.kind == "loan":
                 amount = parse_price(message.text)

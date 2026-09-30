@@ -151,6 +151,83 @@ def _test_level_reply(level: int) -> str:
     return "✅ برای تست، وارد سطح ۳ شدی و نورت ۵۰۰۰ شد. بنویس: «شغل»"
 
 
+async def _reset_everything(telegram_id: int, username: str | None, first_name: str | None) -> None:
+    """پاک‌سازی کامل اطلاعات بازی یک کاربر (فقط برای تست)."""
+    from sqlalchemy import delete, or_, select
+
+    from bot.database.models import (
+        BankPrompt,
+        Chest,
+        DhikrCircleMember,
+        DhikrUnlock,
+        DuaQueue,
+        DuaQueueAnswer,
+        DuaQueueExtraMessage,
+        LoanRequest,
+        MarketListing,
+        MarketPricePrompt,
+        User,
+        UserProduct,
+        UserProduction,
+        UserRawMaterial,
+    )
+
+    async with async_session_factory() as session:
+        async with session.begin():
+            user = await get_or_create_user(session, telegram_id, username, first_name)
+
+            # ابتدا ارجاع کاربر به حلقه را بردار تا حذف ردیف‌ها به FK نخورد.
+            user.active_circle_id = None
+            await session.flush()
+
+            # صف‌های دعای خود کاربر (همراه پاسخ‌ها و پیام‌های اضافه‌شان) + پاسخ‌هایی که او به دیگران داده.
+            owned_queues = select(DuaQueue.id).where(DuaQueue.owner_user_id == user.id)
+            await session.execute(
+                delete(DuaQueueAnswer).where(
+                    or_(
+                        DuaQueueAnswer.queue_id.in_(owned_queues),
+                        DuaQueueAnswer.responder_user_id == user.id,
+                    )
+                )
+            )
+            await session.execute(
+                delete(DuaQueueExtraMessage).where(DuaQueueExtraMessage.queue_id.in_(owned_queues))
+            )
+            await session.execute(delete(DuaQueue).where(DuaQueue.owner_user_id == user.id))
+
+            # عضویت در حلقه‌ها (خود حلقه‌ها برای بقیه‌ی اعضا باقی می‌مانند).
+            await session.execute(
+                delete(DhikrCircleMember).where(DhikrCircleMember.user_id == user.id)
+            )
+
+            for model in (
+                DhikrUnlock,
+                Chest,
+                UserProduction,
+                UserRawMaterial,
+                UserProduct,
+                MarketPricePrompt,
+                BankPrompt,
+            ):
+                await session.execute(delete(model).where(model.user_id == user.id))
+            await session.execute(delete(MarketListing).where(MarketListing.seller_id == user.id))
+            await session.execute(
+                delete(LoanRequest).where(
+                    or_(LoanRequest.borrower_id == user.id, LoanRequest.lender_id == user.id)
+                )
+            )
+
+            # همه‌ی ستون‌های خود کاربر به مقدار پیش‌فرض برمی‌گردند، جز هویت او.
+            keep = {"id", "telegram_id", "username", "first_name", "created_at"}
+            for column in User.__table__.columns:
+                if column.key in keep:
+                    continue
+                default = column.default
+                value = default.arg if default is not None and default.is_scalar else None
+                setattr(user, column.key, value)
+            await session.flush()
+
+
 # ---------------------------------------------------------------------------
 # هندلر اصلی پیام‌های متنی
 # ---------------------------------------------------------------------------
@@ -229,6 +306,24 @@ async def handle_text_message(
                 user.toman = 0
                 await session.flush()
         await message.reply("♻️ شغلت ریست شد. بنویس: «شغل» و دوباره انتخاب کن.")
+        return
+
+    # -----------------------------------------------------------------------
+    # تست: ریست همه (موقت؛ قبل از انتشار نهایی حذف شود)
+    # همه‌ی اطلاعات بازی کاربر را صفر می‌کند (نور، تومان، سطح، شغل، ذکرها، صندوقچه‌ها،
+    # صف دعا، حلقه، انبار، مارکت، بانک و ...) تا مثل کاربر کاملاً تازه شود.
+    # فقط هویت تلگرامی (telegram_id / username / نام / تاریخ ساخت) می‌ماند.
+    # -----------------------------------------------------------------------
+    if normalized == "ریست همه":
+        await _reset_everything(
+            message.from_user.id,
+            message.from_user.username,
+            message.from_user.first_name,
+        )
+        await message.reply(
+            "♻️ همه‌چیز صفر شد؛ نور، پول، سطح، شغل و بقیه‌ی اطلاعاتت پاک شد.\n"
+            "برای شروع دوباره، اولین صلوات رو بفرست."
+        )
         return
 
     # -----------------------------------------------------------------------

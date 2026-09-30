@@ -11,13 +11,13 @@ def _n(value: int) -> str:
 
 
 def _money(value: int) -> str:
-    return to_persian_digits(f"{value:,}").replace(",", "،") + " تومان"
+    return f"{value:,} تومان"  # ارقام انگلیسی (قابل کپی و هماهنگ با دکمه‌ها)
 
 
 def _card(digits: str) -> str:
     from bot.domain.bank_data import format_card_number
 
-    return to_persian_digits(format_card_number(digits))
+    return format_card_number(digits)  # ارقام انگلیسی تا بشود مستقیم کپی و ارسال کرد
 
 
 def _hours(seconds: int) -> str:
@@ -71,7 +71,8 @@ def transfer_prompt_page(toman: int) -> str:
 
 
 TRANSFER_BAD_FORMAT = "⚠️ فرمت درست نیست. بنویس: شماره‌کارت مبلغ (مثال: 6219-6756-3058-1121 5000)"
-TRANSFER_CARD_NOT_FOUND = "⚠️ کارتی با این شماره پیدا نشد. شماره رو چک کن و دوباره بفرست."
+def transfer_card_not_found(digits: str) -> str:
+    return f"⚠️ کارتی با شماره {bd.format_card_number(digits)} پیدا نشد. شماره رو چک کن و دوباره بفرست."
 TRANSFER_SELF = "⚠️ نمی‌تونی به کارت خودت پول بفرستی."
 
 

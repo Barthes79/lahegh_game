@@ -117,9 +117,24 @@ async def show_bank_panel(message: Message) -> None:
 # کارت‌به‌کارت مستقیم: فقط نوشتن «شماره‌کارت مبلغ» در چت (بدون پنل و بدون ریپلای)
 # ---------------------------------------------------------------------------
 
-# کاندیدهای ۱۶ رقمی (ارقام فارسی/انگلیسی) که می‌توانند با فاصله یا خط‌تیره گروه‌بندی شده باشند.
+# تلگرام کنار ارقام انگلیسی داخل متن فارسی کاراکترهای نامرئی راست‌به‌چپ (RLM/LRM و ...) می‌گذارد
+# و بعضی کیبوردها به‌جای «-» خط‌تیره‌ی بلند می‌نویسند؛ این‌ها قبل از پارس حذف/یکسان می‌شوند.
+_INVISIBLE_CHARS = re.compile("[\u200b-\u200f\u202a-\u202e\u2066-\u2069\ufeff\u00ad]")
+_DASH_CHARS = re.compile("[\u2010-\u2015\u2212\ufe58\ufe63\uff0d]")
+
+
+def _clean_text(text: str) -> str:
+    """حذف کاراکترهای نامرئی، یکسان‌سازی خط‌تیره‌ها و تبدیل ارقام فارسی/عربی به انگلیسی."""
+    text = _INVISIBLE_CHARS.sub("", text)
+    text = _DASH_CHARS.sub("-", text)
+    return text.translate(bd._CARD_DIGIT_TRANSLATE)
+
+
+# کاندیدهای ۱۶ رقمی که می‌توانند با فاصله/خط‌تیره (حتی «6219 - 6756») گروه‌بندی شده باشند.
 # lookahead باعث می‌شود کاندیدهای هم‌پوشان هم بررسی شوند (مثلاً مبلغ قبل از شماره کارت).
-_CARD_CANDIDATE = re.compile(r"(?<!\d)(?=(\d{4}[\s\-]?\d{4}[\s\-]?\d{4}[\s\-]?\d{4})(?!\d))")
+_CARD_CANDIDATE = re.compile(
+    r"(?<!\d)(?=(\d{4}[\s\-]{0,3}\d{4}[\s\-]{0,3}\d{4}[\s\-]{0,3}\d{4})(?!\d))"
+)
 
 
 def parse_direct_transfer(text: str) -> tuple[str, int] | None:
@@ -132,7 +147,7 @@ def parse_direct_transfer(text: str) -> tuple[str, int] | None:
     """
     if not text:
         return None
-    translated = text.translate(bd._CARD_DIGIT_TRANSLATE)
+    translated = _clean_text(text)
     for match in _CARD_CANDIDATE.finditer(translated):
         raw = match.group(1)
         digits = bd.normalize_card_number(raw)
@@ -161,7 +176,7 @@ async def _run_transfer(
             (out.other_telegram_id, bt.transfer_received_notice(name, out.detail)),
         )
     if out.result == BankResult.CARD_NOT_FOUND:
-        return bt.TRANSFER_CARD_NOT_FOUND, False, None
+        return bt.transfer_card_not_found(digits), False, None
     if out.result == BankResult.SELF_TRANSFER:
         return bt.TRANSFER_SELF, False, None
     if out.result == BankResult.INSUFFICIENT_FUNDS:
@@ -231,10 +246,8 @@ async def try_handle_bank_reply(message: Message, event_update: Update) -> bool:
             handled = True
 
             if prompt.kind == "transfer":
-                parts = message.text.split()
-                amount = parse_price(parts[-1]) if len(parts) >= 2 else None
-                card_raw = " ".join(parts[:-1]) if len(parts) >= 2 else ""
-                digits = bd.normalize_card_number(card_raw) if card_raw else None
+                parsed = parse_direct_transfer(message.text)
+                digits, amount = parsed if parsed else (None, None)
                 if digits is None or amount is None:
                     reply_text = bt.TRANSFER_BAD_FORMAT
                 else:

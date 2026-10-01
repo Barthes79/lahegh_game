@@ -66,6 +66,8 @@ class User(Base):
     # قبولی آزمون درس ۱ شرط رفتن به سطح ۲ است؛ exam_last_failed_at برای انتظار ۱۵ دقیقه‌ای.
     lesson1_passed: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     exam_last_failed_at: Mapped[datetime | None] = mapped_column(nullable=True)
+    # شهر انتخابی برای اوقات شرعی (کلید در domain/cities_data.py)؛ None = شهر پیش‌فرض سرور
+    prayer_city: Mapped[str | None] = mapped_column(String, nullable=True)
 
     chest_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     first_chest_explained: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)

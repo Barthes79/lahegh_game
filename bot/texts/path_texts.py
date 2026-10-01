@@ -23,8 +23,11 @@ PATH_PRAYER_MENU = "🕌 <b>نماز</b>\n\nیکی از بخش‌ها رو ان�
 NOT_STARTED_HINT = ""  # قابلیت قفل لو نمی‌رود: کاربرِ شروع‌نکرده پاسخی نمی‌گیرد.
 
 
-def first_time_page(views, unavailable: bool = False) -> str:
-    lines = ["🌅 <b>نماز اول وقت</b>", ""]
+def first_time_page(views, unavailable: bool = False, city_name: str | None = None) -> str:
+    lines = ["🌅 <b>نماز اول وقت</b>"]
+    if city_name:
+        lines.append(f"📍 شهر: {city_name}")
+    lines.append("")
     if unavailable or views is None:
         lines.append("⚠️ اوقات شرعی الان در دسترس نیست؛ کمی بعد دوباره امتحان کن.")
         return "\n".join(lines)
@@ -79,6 +82,30 @@ def prayer_locked_toast(prayer: pt.PrayerDef, adhan_at: datetime, state: pt.Wind
 
 PRAYER_ALREADY_CLAIMED = "این نماز رو امروز قبلاً ثبت کردی ✅"
 PRAYER_UNAVAILABLE = "اوقات شرعی الان در دسترس نیست؛ کمی بعد دوباره امتحان کن."
+
+# ---------------------------------------------------------------------------
+# موقعیت مکانی (انتخاب شهر برای اوقات دقیق اذان)
+# ---------------------------------------------------------------------------
+
+
+def location_page(current_city_name: str, page: int, total_pages: int) -> str:
+    return (
+        "📍 <b>موقعیت مکانی</b>\n\n"
+        f"شهر فعلی: <b>{current_city_name}</b>\n\n"
+        "شهرت رو انتخاب کن تا اوقات اذان برای همون شهر دقیق حساب بشه."
+        + (f"\n\nصفحه {page + 1} از {total_pages}" if total_pages > 1 else "")
+    )
+
+
+def city_button_label(name: str, selected: bool) -> str:
+    return f"✅ {name}" if selected else name
+
+
+def city_selected_toast(name: str) -> str:
+    return f"شهرت روی {name} تنظیم شد ✅ اوقات اذان بر اساس همین شهر حساب می‌شه."
+
+
+CITY_UNKNOWN = "این شهر در فهرست نیست."
 
 # ---------------------------------------------------------------------------
 # دروس

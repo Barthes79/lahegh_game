@@ -6,6 +6,7 @@
 
 callback_data پنل (در گروه یا PV):   pth:<action>:<owner_id>[:arg]
   home | pray | first | open:<prayer> | locked:<prayer> | claim:<prayer> | claimed
+  loc:<page> | setcity:<city_key>      (موقعیت مکانی / انتخاب شهر)
   lessons | lesson:<n> | soon | exam:<n>
 callback_data جواب سؤال آزمون (فقط در PV):   exq:<exam_id>:<position>:<option>
 """
@@ -27,6 +28,7 @@ from aiogram.types import (
 )
 
 from bot.database.engine import async_session_factory
+from bot.domain import cities_data as cd
 from bot.domain import lessons_data as ld
 from bot.domain import prayer_times as pt
 from bot.services import lesson_service as ls
@@ -62,6 +64,7 @@ def page_pray(owner_id: int):
     return tx.PATH_PRAYER_MENU, _kb(
         [
             [_btn("🌅 نماز اول وقت", owner_id, "first")],
+            [_btn("📍 موقعیت مکانی", owner_id, "loc", "0")],
             [_btn("📚 دروس", owner_id, "lessons")],
             [_btn("🔙 مسیر انتظار", owner_id, "home")],
         ]
@@ -81,7 +84,31 @@ async def page_first(session, user, owner_id: int, now: datetime, timings):
                 action = "locked"
             rows.append([_btn(tx.prayer_button_label(v), owner_id, action, v.prayer.key)])
     rows.append([_btn("🔙 نماز", owner_id, "pray")])
-    return tx.first_time_page(views), _kb(rows)
+    return tx.first_time_page(views, city_name=ps.city_for_user(user).name), _kb(rows)
+
+
+def page_location(user, owner_id: int, page: int):
+    """فهرست شهرها (دو ستونه، صفحه‌بندی‌شده)؛ شهر فعلی با ✅ مشخص می‌شود."""
+    page = cd.clamp_page(page)
+    current = ps.city_for_user(user)
+    cities = cd.cities_on_page(page)
+    rows: list[list[InlineKeyboardButton]] = []
+    for i in range(0, len(cities), 2):
+        rows.append(
+            [
+                _btn(tx.city_button_label(c.name, c.key == current.key), owner_id, "setcity", c.key)
+                for c in cities[i : i + 2]
+            ]
+        )
+    nav: list[InlineKeyboardButton] = []
+    if page > 0:
+        nav.append(_btn("◀️ قبلی", owner_id, "loc", str(page - 1)))
+    if page < cd.page_count() - 1:
+        nav.append(_btn("بعدی ▶️", owner_id, "loc", str(page + 1)))
+    if nav:
+        rows.append(nav)
+    rows.append([_btn("🔙 نماز", owner_id, "pray")])
+    return tx.location_page(current.name, page, cd.page_count()), _kb(rows)
 
 
 async def page_lessons(user, owner_id: int):
@@ -178,7 +205,9 @@ async def on_path_callback(callback: CallbackQuery, event_update: Update) -> Non
     # دریافت اوقات شرعی از شبکه، بیرون از تراکنش دیتابیس.
     timings = None
     if action in ("first", "open", "claim", "locked"):
-        timings = await ps.get_today_timings(now)
+        async with async_session_factory() as read_session:
+            city = ps.city_for_user(await get_user_by_telegram_id(read_session, owner_id))
+        timings = await ps.get_today_timings(now, city)
 
     toast: str | None = None
     alert = False
@@ -203,6 +232,19 @@ async def on_path_callback(callback: CallbackQuery, event_update: Update) -> Non
 
             elif action == "first":
                 page = await page_first(session, user, owner_id, now, timings)
+
+            elif action == "loc":
+                page = page_location(user, owner_id, int(args[0]) if args and args[0].isdigit() else 0)
+
+            elif action == "setcity" and args:
+                city = cd.get_city(args[0])
+                if city is None:
+                    toast, alert = tx.CITY_UNKNOWN, True
+                    page = page_location(user, owner_id, 0)
+                else:
+                    user.prayer_city = city.key
+                    toast = tx.city_selected_toast(city.name)
+                    page = page_pray(owner_id)
 
             elif action in ("open", "locked") and args:
                 views = await ps.get_prayer_views(session, user, now, timings)

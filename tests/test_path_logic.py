@@ -10,6 +10,7 @@ from zoneinfo import ZoneInfo
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
+from bot.domain import cities_data as cd  # noqa: E402
 from bot.domain import lessons_data as ld  # noqa: E402
 from bot.domain import prayer_times as pt  # noqa: E402
 from bot.domain import salawat_data as sd  # noqa: E402
@@ -57,5 +58,14 @@ check(grade.correct_count == 8 and grade.passed and grade.wrong_positions == (3,
 wrong[0] = (wrong[0] + 1) % 4
 check(not ld.grade_exam(lesson, order, wrong).passed, "۷ از ۱۰: مردود")
 check(ld.EXAM_RETRY_COOLDOWN_SECONDS == 900, "بعد از مردودی ۱۵ دقیقه انتظار")
+
+# ---- شهرها (موقعیت مکانی) ----
+check(len({c.key for c in cd.CITIES}) == len(cd.CITIES), "کلید شهرها یکتاست")
+check(all(len(c.key) <= 20 and c.key.isascii() and c.key.islower() for c in cd.CITIES), "کلیدها انگلیسی و کوتاه (جا در callback_data)")
+check(all(25 < c.latitude < 40 and 44 < c.longitude < 64 for c in cd.CITIES), "مختصات همه‌ی شهرها داخل ایران است")
+pages = [cd.cities_on_page(i) for i in range(cd.page_count())]
+check(sum(len(p) for p in pages) == len(cd.CITIES) and all(len(p) <= cd.CITIES_PER_PAGE for p in pages), "صفحه‌بندی: هر شهر دقیقاً یک بار")
+check(cd.clamp_page(-1) == 0 and cd.clamp_page(999) == cd.page_count() - 1, "صفحه‌ی خارج از محدوده clamp می‌شود")
+check(cd.get_city("tehran") is not None and cd.get_city("nope") is None and cd.get_city(None) is None, "get_city")
 
 sys.exit(1 if failures else 0)

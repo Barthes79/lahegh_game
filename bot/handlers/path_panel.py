@@ -187,6 +187,7 @@ async def _edit(
         await callback.message.edit_text(text, reply_markup=kb, link_preview_options=preview)
     except TelegramBadRequest as exc:
         if "message is not modified" in str(exc).lower():
+            logger.info("pth: edit رد شد چون محتوا عوض نشده بود (message is not modified)")
             return
         logger.warning("edit_text failed, sending new message instead: %s", exc)
         try:
@@ -238,10 +239,15 @@ async def on_path_callback(callback: CallbackQuery, event_update: Update) -> Non
         return
     parts = callback.data.split(":")
     if len(parts) < 3 or not parts[2].lstrip("-").isdigit():
+        logger.warning("pth: callback_data نامعتبر نادیده گرفته شد: %r", callback.data)
+        await callback.answer()
         return
     action, owner_id, args = parts[1], int(parts[2]), parts[3:]
     if callback.from_user.id != owner_id:
+        # عمداً بی‌پاسخ (پنل مال کس دیگری است)؛ ولی در لاگ ثبت می‌شود تا قابل ردیابی باشد.
+        logger.info("pth: کلیک غیرصاحب پنل نادیده گرفته شد: action=%s owner=%s clicker=%s", action, owner_id, callback.from_user.id)
         return
+    logger.info("pth: action=%s args=%s owner=%s chat=%s", action, args, owner_id, callback.message.chat.type)
 
     now = datetime.now(timezone.utc)
     # دریافت اوقات شرعی از شبکه، بیرون از تراکنش دیتابیس.
@@ -261,6 +267,7 @@ async def on_path_callback(callback: CallbackQuery, event_update: Update) -> Non
     async with async_session_factory() as session:
         async with session.begin():
             if not await try_claim_update(session, event_update.update_id):
+                logger.warning("pth: update_id=%s قبلاً پردازش شده بود و نادیده گرفته شد (action=%s)", event_update.update_id, action)
                 await callback.answer()
                 return
             user = await get_or_create_user(
@@ -420,6 +427,7 @@ async def on_path_callback(callback: CallbackQuery, event_update: Update) -> Non
             await callback.answer(tx.EXAM_NEED_START_PV, show_alert=True)
             return
 
+    logger.info("pth: action=%s → صفحه با %d دکمه، toast=%r", action, len(kb.inline_keyboard), toast)
     await callback.answer(toast, show_alert=alert) if toast else await callback.answer()
     audio_url = _audio_url_for(audio_lesson.number) if audio_lesson is not None else None
     if audio_lesson is not None:

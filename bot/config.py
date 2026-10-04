@@ -73,7 +73,9 @@ class Settings:
     prayer_timezone: str = field(default_factory=lambda: _get_str("PRAYER_TIMEZONE", "Asia/Tehran"))
 
     # لینک پست صوتی درس ۱ در کانال عمومی (Copy Post Link)؛ خالی = ارسال فایل جدا مثل قبل
-    lesson1_audio_url: str = field(default_factory=lambda: _get_str("LESSON_1_AUDIO_URL", ""))
+    lesson1_audio_url: str = field(
+        default_factory=lambda: _get_str("LESSON_1_AUDIO_URL", "https://t.me/dsfgnsdfhre/2")
+    )
     lesson2_audio_url: str = field(
         default_factory=lambda: _get_str("LESSON_2_AUDIO_URL", "https://t.me/dsfgnsdfhre/4")
     )
